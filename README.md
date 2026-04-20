@@ -24,6 +24,7 @@ Stack Docker simple pour Dokploy avec :
 - [`grafana/provisioning/datasources/datasource.yml`](./grafana/provisioning/datasources/datasource.yml)
 - [`grafana/provisioning/dashboards/dashboards.yml`](./grafana/provisioning/dashboards/dashboards.yml)
 - [`grafana/dashboards/overview.json`](./grafana/dashboards/overview.json)
+- [`grafana/dashboards/panthera.json`](./grafana/dashboards/panthera.json)
 
 ## Mise en route
 
@@ -44,10 +45,10 @@ Pour monitorer un nouveau serveur Linux :
 
 Pour monitorer un nouvel endpoint `/metrics` :
 
-- Ajouter une nouvelle cible dans le job `app-metrics`
+- Ajouter une nouvelle cible dans le job `panthera`
 - Si l'endpoint nécessite un autre token, créer un nouveau job
 
 ## Point d'attention
 
-L'alerte `AppRestartLoop` suppose que l'endpoint expose `process_start_time_seconds`.
-Si ce n'est pas le cas, il faut soit ajouter cette métrique côté application, soit remplacer cette règle par une métrique métier plus adaptée.
+L'alerte `PantheraRuntimeNotStarted` repose sur `panthera_runtime_enabled` et `panthera_runtime_started`.
+Si tu veux détecter un autre type de panne applicative, ajoute une règle basée sur `panthera_detector_has_error`, `panthera_camera_has_error` ou `panthera_startup_errors`.
