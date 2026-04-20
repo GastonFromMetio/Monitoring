@@ -49,12 +49,13 @@ scrape_configs:
         labels:
           server_name: apiaryhub
 
-  - job_name: app-metrics
+  - job_name: panthera
     scheme: https
     metrics_path: /metrics
-    bearer_token_file: /etc/prometheus/secrets/panthera.token
+    authorization:
+      type: Bearer
+      credentials: ${PANTHERA_METRICS_AUTH_TOKEN}
     static_configs:
-      - targets:
-          - panthera.metio-dev.fr
+      - targets: ["panthera.metio-dev.fr"]
         labels:
-          server_name: panthera-prod
+          server_name: "panthera-prod"

@@ -4,9 +4,12 @@ services:
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
+      - --config.expand-env
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
       - --web.enable-lifecycle
+    environment:
+      PANTHERA_METRICS_AUTH_TOKEN: ${PANTHERA_METRICS_AUTH_TOKEN:?set in .env or Dokploy}
     volumes:
       - prometheus-data:/prometheus
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro

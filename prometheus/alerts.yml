@@ -20,7 +20,7 @@ groups:
           description: "Le node exporter de {{ $labels.server_name }} ({{ $labels.instance }}) ne répond plus depuis 1 minute."
 
       - alert: AppMetricsDown
-        expr: up{job="app-metrics"} == 0
+        expr: up{job="panthera"} == 0
         for: 1m
         labels:
           severity: critical
@@ -29,7 +29,7 @@ groups:
           description: "L'endpoint /metrics de {{ $labels.server_name }} ({{ $labels.instance }}) ne répond plus depuis 1 minute."
 
       - alert: PantheraRuntimeNotStarted
-        expr: panthera_runtime_enabled{job="app-metrics"} == 1 and panthera_runtime_started{job="app-metrics"} == 0
+        expr: panthera_runtime_enabled{job="panthera"} == 1 and panthera_runtime_started{job="panthera"} == 0
         for: 2m
         labels:
           severity: warning
