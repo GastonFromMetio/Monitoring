@@ -17,8 +17,9 @@ Stack Docker simple pour Dokploy avec :
 ## Fichiers importants
 
 - [`docker-compose.yml`](./docker-compose.yml)
-- [`prometheus/prometheus.yml`](./prometheus/prometheus.yml)
+- [`prometheus/prometheus.yml.tmpl`](./prometheus/prometheus.yml.tmpl)
 - [`prometheus/alerts.yml`](./prometheus/alerts.yml)
+- [`prometheus/render-config.sh`](./prometheus/render-config.sh)
 - [`alertmanager/render-config.sh`](./alertmanager/render-config.sh)
 - [`grafana/provisioning/datasources/datasource.yml`](./grafana/provisioning/datasources/datasource.yml)
 - [`grafana/provisioning/dashboards/dashboards.yml`](./grafana/provisioning/dashboards/dashboards.yml)
@@ -28,16 +29,16 @@ Stack Docker simple pour Dokploy avec :
 
 1. Copier `.env.example` en `.env` et renseigner :
    - `GRAFANA_ADMIN_PASSWORD`
+   - `PANTHERA_METRICS_AUTH_TOKEN`
    - `SLACK_WEBHOOK_URL`
    - `SLACK_CHANNEL` si besoin
-2. Placer le token bearer de l'endpoint applicatif dans `prometheus/secrets/panthera.token`
-3. Lancer la stack avec Docker Compose ou via Dokploy
+2. Lancer la stack avec Docker Compose ou via Dokploy
 
 ## Ajouter un serveur
 
 Pour monitorer un nouveau serveur Linux :
 
-- Ajouter son `node-exporter` dans `prometheus/prometheus.yml`
+- Ajouter son `node-exporter` dans `prometheus/prometheus.yml.tmpl`
 - Donner un `server_name` unique
 - Réutiliser le même label dans les dashboards et alertes
 

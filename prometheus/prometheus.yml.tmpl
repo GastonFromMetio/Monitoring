@@ -54,7 +54,7 @@ scrape_configs:
     metrics_path: /metrics
     authorization:
       type: Bearer
-      credentials: ${PANTHERA_METRICS_AUTH_TOKEN}
+      credentials: __PANTHERA_METRICS_AUTH_TOKEN__
     static_configs:
       - targets: ["panthera.metio-dev.fr"]
         labels:

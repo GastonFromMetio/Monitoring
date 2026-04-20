@@ -2,19 +2,16 @@ services:
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --config.expand-env
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=15d
-      - --web.enable-lifecycle
+    entrypoint:
+      - /bin/sh
+      - /etc/prometheus/render-config.sh
     environment:
       PANTHERA_METRICS_AUTH_TOKEN: ${PANTHERA_METRICS_AUTH_TOKEN:?set in .env or Dokploy}
     volumes:
       - prometheus-data:/prometheus
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/render-config.sh:/etc/prometheus/render-config.sh:ro
+      - ./prometheus/prometheus.yml.tmpl:/etc/prometheus/prometheus.yml.tmpl:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
-      - ./prometheus/secrets:/etc/prometheus/secrets:ro
     networks:
       - dokploy-network
 
