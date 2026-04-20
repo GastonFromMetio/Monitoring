@@ -1,0 +1,38 @@
+groups:
+  - name: infra-alerts
+    rules:
+      - alert: MonitoringStackDown
+        expr: up{job="monitoring-stack"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.server_name }} DOWN"
+          description: "Le service {{ $labels.server_name }} ne répond plus depuis 1 minute."
+
+      - alert: NodeExporterDown
+        expr: up{job="node"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.server_name }} DOWN"
+          description: "Le node exporter de {{ $labels.server_name }} ({{ $labels.instance }}) ne répond plus depuis 1 minute."
+
+      - alert: AppMetricsDown
+        expr: up{job="app-metrics"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.server_name }} DOWN"
+          description: "L'endpoint /metrics de {{ $labels.server_name }} ({{ $labels.instance }}) ne répond plus depuis 1 minute."
+
+      - alert: PantheraRuntimeNotStarted
+        expr: panthera_runtime_enabled{job="app-metrics"} == 1 and panthera_runtime_started{job="app-metrics"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.server_name }} runtime not started"
+          description: "Le runtime Panthera est activé mais n'a pas démarré correctement."

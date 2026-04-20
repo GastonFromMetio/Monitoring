@@ -1,0 +1,60 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+        labels:
+          server_name: prometheus
+
+  - job_name: monitoring-stack
+    static_configs:
+      - targets:
+          - alertmanager:9093
+        labels:
+          server_name: alertmanager
+      - targets:
+          - grafana:3000
+        labels:
+          server_name: grafana
+      - targets:
+          - prometheus:9090
+        labels:
+          server_name: prometheus
+
+  - job_name: node
+    static_configs:
+      - targets:
+          - node-exporter:9100
+        labels:
+          server_name: dokploy
+      - targets:
+          - 168.222.244.56:9100
+        labels:
+          server_name: panthera
+      - targets:
+          - 135.125.75.65:9100
+        labels:
+          server_name: apiaryhub
+
+  - job_name: app-metrics
+    scheme: https
+    metrics_path: /metrics
+    bearer_token_file: /etc/prometheus/secrets/panthera.token
+    static_configs:
+      - targets:
+          - panthera.metio-dev.fr
+        labels:
+          server_name: panthera-prod
