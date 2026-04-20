@@ -1,15 +1,6 @@
 groups:
   - name: infra-alerts
     rules:
-      - alert: MonitoringStackDown
-        expr: up{job="monitoring-stack"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "{{ $labels.server_name }} DOWN"
-          description: "Le service {{ $labels.server_name }} ne répond plus depuis 1 minute."
-
       - alert: NodeExporterDown
         expr: up{job="node"} == 0
         for: 1m
@@ -19,15 +10,6 @@ groups:
           summary: "{{ $labels.server_name }} DOWN"
           description: "Le node exporter de {{ $labels.server_name }} ({{ $labels.instance }}) ne répond plus depuis 1 minute."
 
-      - alert: AppMetricsDown
-        expr: up{job="panthera"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "{{ $labels.server_name }} DOWN"
-          description: "L'endpoint /metrics de {{ $labels.server_name }} ({{ $labels.instance }}) ne répond plus depuis 1 minute."
-
       - alert: PantheraRuntimeNotStarted
         expr: panthera_runtime_enabled{job="panthera"} == 1 and panthera_runtime_started{job="panthera"} == 0
         for: 2m
@@ -36,3 +18,21 @@ groups:
         annotations:
           summary: "{{ $labels.server_name }} runtime not started"
           description: "Le runtime Panthera est activé mais n'a pas démarré correctement."
+
+      - alert: PantheraStartupErrors
+        expr: panthera_startup_errors{job="panthera"} > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.server_name }} startup errors"
+          description: "Panthera a enregistré des erreurs au démarrage."
+
+      - alert: PantheraDetectorHasError
+        expr: panthera_detector_has_error{job="panthera"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.server_name }} detector error"
+          description: "Le backend de détection Panthera signale une erreur."

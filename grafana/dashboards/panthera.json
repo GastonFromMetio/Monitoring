@@ -4,7 +4,7 @@
   "tags": ["panthera", "metrics", "prometheus"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -39,7 +39,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Metrics up",
+      "title": "Runtime enabled",
       "type": "stat",
       "gridPos": { "h": 8, "w": 4, "x": 0, "y": 0 },
       "datasource": {
@@ -48,7 +48,7 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"panthera\"}",
+          "expr": "panthera_runtime_enabled{job=\"panthera\"}",
           "refId": "A"
         }
       ],
