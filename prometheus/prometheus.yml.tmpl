@@ -64,10 +64,10 @@ scrape_configs:
       module: [http_2xx]
     static_configs:
       - targets:
-          - https://apiaryhub.metio-dev.fr/health
+          - https://eviaway.713.fr/health
         labels:
-          server_name: apiaryhub
-          service: apiaryhub
+          server_name: eviaway
+          service: eviaway
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
