@@ -30,6 +30,16 @@ services:
     networks:
       - dokploy-network
 
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox_exporter/config.yml
+    volumes:
+      - ./blackbox/config.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - dokploy-network
+
   grafana:
     image: grafana/grafana:latest
     restart: unless-stopped

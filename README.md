@@ -6,11 +6,13 @@ Stack Docker simple pour Dokploy avec :
 - `Alertmanager` pour l'envoi des notifications Slack
 - `Grafana` pour les dashboards
 - `node-exporter` pour les ressources serveurs
+- `blackbox-exporter` pour les checks HTTP publics
 
 ## Ce que couvre la stack
 
 - Ressources des serveurs configurés dans Prometheus
 - Endpoints `/metrics` de serveurs applicatifs
+- Endpoints HTTP publics `/health`
 - Alertes sur les cibles down/up
 - Alertes sur la santé de la stack elle-même
 
@@ -20,6 +22,7 @@ Stack Docker simple pour Dokploy avec :
 - [`prometheus/prometheus.yml.tmpl`](./prometheus/prometheus.yml.tmpl)
 - [`prometheus/alerts.yml`](./prometheus/alerts.yml)
 - [`prometheus/render-config.sh`](./prometheus/render-config.sh)
+- [`blackbox/config.yml`](./blackbox/config.yml)
 - [`alertmanager/render-config.sh`](./alertmanager/render-config.sh)
 - [`grafana/provisioning/datasources/datasource.yml`](./grafana/provisioning/datasources/datasource.yml)
 - [`grafana/provisioning/dashboards/dashboards.yml`](./grafana/provisioning/dashboards/dashboards.yml)
@@ -47,6 +50,13 @@ Pour monitorer un nouvel endpoint `/metrics` :
 
 - Ajouter une nouvelle cible dans le job `panthera`
 - Si l'endpoint nécessite un autre token, créer un nouveau job
+
+Pour monitorer un endpoint HTTP public `/health` :
+
+- Ajouter l'URL complète dans le job `http-health`
+- Les codes HTTP 2xx sont considérés OK
+- Le check tourne toutes les 60 secondes avec timeout à 10 secondes
+- L'alerte `PublicHealthCheckFailed` se déclenche après environ 2 retries
 
 ## Point d'attention
 

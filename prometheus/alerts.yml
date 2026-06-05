@@ -9,3 +9,12 @@ groups:
         annotations:
           summary: "{{ $labels.server_name }} DOWN"
           description: "Le node exporter de {{ $labels.server_name }} ({{ $labels.instance }}) ne répond plus depuis 1 minute."
+
+      - alert: PublicHealthCheckFailed
+        expr: probe_success{job="http-health"} == 0 or up{job="http-health"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.server_name }} /health DOWN"
+          description: "Le endpoint {{ $labels.instance }} ne retourne pas de code HTTP 2xx depuis au moins 2 minutes (intervalle 60s, timeout 10s)."

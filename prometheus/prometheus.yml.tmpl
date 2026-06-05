@@ -44,10 +44,6 @@ scrape_configs:
           - 168.222.244.56:9100
         labels:
           server_name: panthera
-      - targets:
-          - 135.125.75.65:9100
-        labels:
-          server_name: apiaryhub
 
   - job_name: panthera
     scheme: https
@@ -59,3 +55,23 @@ scrape_configs:
       - targets: ["panthera.metio-dev.fr"]
         labels:
           server_name: "panthera-prod"
+
+  - job_name: http-health
+    metrics_path: /probe
+    scrape_interval: 60s
+    scrape_timeout: 10s
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - https://apiaryhub.metio-dev.fr/health
+        labels:
+          server_name: apiaryhub
+          service: apiaryhub
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
