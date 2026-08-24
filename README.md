@@ -1,64 +1,49 @@
-# Monitoring stack
+# Metio Monitoring
 
-Stack Docker simple pour Dokploy avec :
+Instance Zabbix auto-hébergée pour centraliser la supervision des serveurs, endpoints opérationnels et alertes. L'administration passe par une seule URL, une seule connexion et l'interface native Zabbix.
 
-- `Prometheus` pour le scraping et les alertes
-- `Alertmanager` pour l'envoi des notifications Slack
-- `Grafana` pour les dashboards
-- `node-exporter` pour les ressources serveurs
-- `blackbox-exporter` pour les checks HTTP publics
+Le périmètre initial est volontairement limité à cinq applications : **Eviamemo**, **Eviaway**, **Npec**, **Stimergie Image Hub** et **TransCare**. Aucune URL, aucun token et aucune hypothèse sur leurs JSON ne sont enregistrés dans ce dépôt.
 
-## Ce que couvre la stack
+## Ce qui est déployé
 
-- Ressources des serveurs configurés dans Prometheus
-- Endpoints `/metrics` de serveurs applicatifs
-- Endpoints HTTP publics `/health`
-- Alertes sur les cibles down/up
-- Alertes sur la santé de la stack elle-même
+- PostgreSQL, stockage persistant de Zabbix ;
+- Zabbix Server, qui collecte les agents et les endpoints ;
+- Zabbix Web, seule interface exposée via Traefik/Dokploy ;
+- un bootstrap one-shot qui sécurise le compte administrateur et précrée les cinq applications désactivées ;
+- le modèle `Metio API /ops — JSON générique`, utilisable dans le Host Wizard.
 
-## Fichiers importants
+Il n'y a ni Prometheus, ni Grafana, ni Alertmanager dans cette version.
 
-- [`docker-compose.yml`](./docker-compose.yml)
-- [`prometheus/prometheus.yml.tmpl`](./prometheus/prometheus.yml.tmpl)
-- [`prometheus/alerts.yml`](./prometheus/alerts.yml)
-- [`prometheus/render-config.sh`](./prometheus/render-config.sh)
-- [`blackbox/config.yml`](./blackbox/config.yml)
-- [`alertmanager/render-config.sh`](./alertmanager/render-config.sh)
-- [`grafana/provisioning/datasources/datasource.yml`](./grafana/provisioning/datasources/datasource.yml)
-- [`grafana/provisioning/dashboards/dashboards.yml`](./grafana/provisioning/dashboards/dashboards.yml)
-- [`grafana/dashboards/overview.json`](./grafana/dashboards/overview.json)
-- [`grafana/dashboards/panthera.json`](./grafana/dashboards/panthera.json)
+## Premier déploiement Dokploy
 
-## Mise en route
+1. Définir ce dépôt comme application Docker Compose dans Dokploy.
+2. Créer les variables suivantes dans Dokploy, sans les ajouter au Git :
+   - `MONITORING_DOMAIN` ;
+   - `POSTGRES_PASSWORD` ;
+   - `ZABBIX_ADMIN_PASSWORD` ;
+   - `ZABBIX_SERVER_PORT` si le port par défaut `10051` ne convient pas.
+3. Vérifier que `DOKPLOY_NETWORK` désigne le réseau externe de Traefik (par défaut `dokploy-network`).
+4. Déployer, puis attendre la fin du service `bootstrap`.
+5. Se connecter à `https://MONITORING_DOMAIN` avec `Admin` et `ZABBIX_ADMIN_PASSWORD`.
 
-1. Copier `.env.example` en `.env` et renseigner :
-   - `GRAFANA_ADMIN_PASSWORD`
-   - `PANTHERA_METRICS_AUTH_TOKEN`
-   - `SLACK_WEBHOOK_URL`
-   - `SLACK_CHANNEL` si besoin
-2. Lancer la stack avec Docker Compose ou via Dokploy
+Le bootstrap ne s'exécute qu'une seule fois grâce au volume `bootstrap-state`. Il ne remplace donc jamais ultérieurement un mot de passe ou une configuration modifiés depuis l'interface.
+
+## Ajouter une application
+
+Les cinq hôtes sont visibles dans `Data collection → Hosts`, mais désactivés. Le parcours détaillé pour renseigner une URL `/ops`, tester le JSON, ajouter des JSONPath et créer les alertes est dans [docs/endpoint-configuration.md](docs/endpoint-configuration.md). Le [contrat recommandé des endpoints](docs/monitoring-endpoint-contract.md) décrit la base commune à privilégier pour les nouveaux projets.
+
+La structure du JSON est libre. Le modèle conserve d'abord la réponse brute ; les indicateurs particuliers à une application deviennent des *dependent items* dans Zabbix. Cela évite d'imposer un contrat artificiel à Eviamemo, Eviaway, Npec, Stimergie Image Hub ou TransCare.
 
 ## Ajouter un serveur
 
-Pour monitorer un nouveau serveur Linux :
+Le parcours d'ajout d'un agent Linux actif et chiffré est dans [docs/server-agents.md](docs/server-agents.md). Un agent est installé sur chaque serveur, mais l'exploitation reste dans la même interface Zabbix.
 
-- Ajouter son `node-exporter` dans `prometheus/prometheus.yml.tmpl`
-- Donner un `server_name` unique
-- Réutiliser le même label dans les dashboards et alertes
+## Vérifications locales
 
-Pour monitorer un nouvel endpoint `/metrics` :
+```sh
+docker compose --env-file .env.example config --quiet
+sh -n bootstrap/seed.sh
+jq empty bootstrap/projects.json
+```
 
-- Ajouter une nouvelle cible dans le job `panthera`
-- Si l'endpoint nécessite un autre token, créer un nouveau job
-
-Pour monitorer un endpoint HTTP public `/health` :
-
-- Ajouter l'URL complète dans le job `http-health`
-- Les codes HTTP 2xx sont considérés OK
-- Le check tourne toutes les 60 secondes avec timeout à 10 secondes
-- L'alerte `PublicHealthCheckFailed` se déclenche après environ 2 retries
-
-## Point d'attention
-
-L'alerte `PantheraRuntimeNotStarted` repose sur `panthera_runtime_enabled` et `panthera_runtime_started`.
-Si tu veux détecter un autre type de panne applicative, ajoute une règle basée sur `panthera_detector_has_error`, `panthera_camera_has_error` ou `panthera_startup_errors`.
+Ces commandes valident la composition et les fichiers du dépôt ; elles ne prouvent pas qu'un déploiement Dokploy, un DNS, un firewall ou un endpoint applicatif fonctionne.

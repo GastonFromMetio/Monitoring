@@ -1,82 +1,91 @@
 services:
-  prometheus:
-    image: prom/prometheus:latest
-    restart: unless-stopped
-    entrypoint:
-      - /bin/sh
-      - /etc/prometheus/render-config.sh
-    environment:
-      PANTHERA_METRICS_AUTH_TOKEN: ${PANTHERA_METRICS_AUTH_TOKEN:?set in .env or Dokploy}
-    volumes:
-      - prometheus-data:/prometheus
-      - ./prometheus/render-config.sh:/etc/prometheus/render-config.sh:ro
-      - ./prometheus/prometheus.yml.tmpl:/etc/prometheus/prometheus.yml.tmpl:ro
-      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
-    networks:
-      - dokploy-network
-
-  alertmanager:
-    image: prom/alertmanager:latest
-    restart: unless-stopped
-    entrypoint:
-      - /bin/sh
-      - /etc/alertmanager/render-config.sh
-    environment:
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
-      SLACK_CHANNEL: ${SLACK_CHANNEL:-#monitoring}
-    volumes:
-      - alertmanager-data:/alertmanager
-      - ./alertmanager/render-config.sh:/etc/alertmanager/render-config.sh:ro
-    networks:
-      - dokploy-network
-
-  blackbox-exporter:
-    image: prom/blackbox-exporter:latest
-    restart: unless-stopped
-    command:
-      - --config.file=/etc/blackbox_exporter/config.yml
-    volumes:
-      - ./blackbox/config.yml:/etc/blackbox_exporter/config.yml:ro
-    networks:
-      - dokploy-network
-
-  grafana:
-    image: grafana/grafana:latest
+  postgres:
+    image: postgres:17.6-alpine
     restart: unless-stopped
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set in .env}
-      GF_METRICS_ENABLED: "true"
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env or Dokploy}
     volumes:
-      - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - zabbix-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - monitoring-internal
+
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.4.6
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env or Dokploy}
+      ZBX_TIMEOUT: "10"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${ZABBIX_SERVER_PORT:-10051}:10051"
+    networks:
+      - monitoring-internal
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.4.6
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env or Dokploy}
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_NAME: Metio Monitoring
+      PHP_TZ: Europe/Paris
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zabbix-server:
+        condition: service_started
+    expose:
+      - "8080"
     labels:
       traefik.enable: "true"
-      traefik.docker.network: dokploy-network
-      traefik.http.routers.grafana.rule: Host(`monitoring.metio-dev.fr`)
-      traefik.http.routers.grafana.entrypoints: websecure
-      traefik.http.routers.grafana.tls: "true"
-      traefik.http.services.grafana.loadbalancer.server.port: "3000"
+      traefik.docker.network: ${DOKPLOY_NETWORK:-dokploy-network}
+      traefik.http.routers.metio-monitoring.rule: Host(`${MONITORING_DOMAIN:?set in .env or Dokploy}`)
+      traefik.http.routers.metio-monitoring.entrypoints: websecure
+      traefik.http.routers.metio-monitoring.tls: "true"
+      traefik.http.services.metio-monitoring.loadbalancer.server.port: "8080"
     networks:
+      - monitoring-internal
       - dokploy-network
 
-  node-exporter:
-    image: prom/node-exporter:latest
-    restart: unless-stopped
-    pid: host
-    command:
-      - --path.rootfs=/host
+  bootstrap:
+    build:
+      context: ./bootstrap
+    restart: "no"
+    environment:
+      ZABBIX_API_URL: http://zabbix-web:8080/api_jsonrpc.php
+      ZABBIX_ADMIN_PASSWORD: ${ZABBIX_ADMIN_PASSWORD:?set in .env or Dokploy}
     volumes:
-      - /:/host:ro,rslave
+      - bootstrap-state:/state
+      - ./bootstrap/projects.json:/bootstrap/projects.json:ro
+    depends_on:
+      zabbix-web:
+        condition: service_started
     networks:
-      - dokploy-network
+      - monitoring-internal
 
 volumes:
-  prometheus-data:
-  grafana-data:
-  alertmanager-data:
+  zabbix-postgres-data:
+  bootstrap-state:
 
 networks:
+  monitoring-internal:
+    internal: true
   dokploy-network:
     external: true
+    name: ${DOKPLOY_NETWORK:-dokploy-network}

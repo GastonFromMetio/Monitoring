@@ -1,0 +1,9 @@
+{
+  "projects": [
+    { "id": "eviamemo", "name": "Eviamemo" },
+    { "id": "eviaway", "name": "Eviaway" },
+    { "id": "npec", "name": "Npec" },
+    { "id": "stimergie-image-hub", "name": "Stimergie Image Hub" },
+    { "id": "transcare", "name": "TransCare" }
+  ]
+}
