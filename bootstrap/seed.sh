@@ -34,7 +34,12 @@ login() {
   password=$1
   params=$(jq -cn --arg password "$password" '{username: "Admin", password: $password}')
   response=$(api_request user.login "$params" 2>/dev/null) || return 1
-  printf '%s' "$response" | jq -er '.result' 2>/dev/null
+  printf '%s' "$response" | jq -er '.result // empty' 2>/dev/null
+}
+
+api_is_ready() {
+  response=$(api_request apiinfo.version '{}' 2>/dev/null) || return 1
+  printf '%s' "$response" | jq -e '.result' >/dev/null 2>&1
 }
 
 call() {
@@ -438,22 +443,28 @@ attempt=1
 auth=''
 admin_id=''
 password_is_default=0
+api_reachable=0
+admin_lookup_failed=0
 while [ "$attempt" -le 90 ]; do
-  auth=$(login zabbix || true)
-  if [ -n "$auth" ]; then
-    password_is_default=1
-  else
-    auth=$(login "$ZABBIX_ADMIN_PASSWORD" || true)
-  fi
-
-  if [ -n "$auth" ]; then
-    admin_result=$(call user.get '{"output":["userid"],"filter":{"username":["Admin"]}}' "$auth" 2>/dev/null || true)
-    admin_id=$(printf '%s' "$admin_result" | jq -r '.[0].userid // empty' 2>/dev/null || true)
-    if [ -n "$admin_id" ]; then
-      break
+  if api_is_ready; then
+    api_reachable=1
+    auth=$(login zabbix || true)
+    if [ -n "$auth" ]; then
+      password_is_default=1
+    else
+      auth=$(login "$ZABBIX_ADMIN_PASSWORD" || true)
     fi
-    auth=''
-    password_is_default=0
+
+    if [ -n "$auth" ]; then
+      admin_result=$(call user.get '{"output":["userid"],"filter":{"username":["Admin"]}}' "$auth" 2>/dev/null || true)
+      admin_id=$(printf '%s' "$admin_result" | jq -r '.[0].userid // empty' 2>/dev/null || true)
+      if [ -n "$admin_id" ]; then
+        break
+      fi
+      admin_lookup_failed=1
+      auth=''
+      password_is_default=0
+    fi
   fi
 
   attempt=$((attempt + 1))
@@ -461,7 +472,13 @@ while [ "$attempt" -le 90 ]; do
 done
 
 if [ -z "$auth" ] || [ -z "$admin_id" ]; then
-  echo "Impossible de se connecter à Zabbix ou de lire sa configuration." >&2
+  if [ "$api_reachable" -eq 0 ]; then
+    echo "L’API Zabbix est restée inaccessible après 3 minutes. Vérifier les logs zabbix-web et zabbix-server, ainsi que leur connexion PostgreSQL." >&2
+  elif [ "$admin_lookup_failed" -eq 1 ]; then
+    echo "L’API Zabbix accepte la connexion Admin, mais la configuration utilisateur est illisible. Vérifier les permissions du compte Admin et les logs de l’API Zabbix." >&2
+  else
+    echo "L’API Zabbix répond, mais le mot de passe Admin est refusé. Pour une instance existante, ZABBIX_ADMIN_PASSWORD dans Dokploy doit correspondre au mot de passe actuel du compte Admin ; ne pas le publier dans les logs." >&2
+  fi
   exit 1
 fi
 
