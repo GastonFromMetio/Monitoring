@@ -1,6 +1,6 @@
 # Contrat recommandé des endpoints de monitoring
 
-Le modèle Zabbix de ce dépôt accepte n'importe quel JSON `/ops`. Pour les nouveaux projets, ce contrat commun rend les alertes et les mappings plus simples, sans imposer de modifier une application déjà instrumentée.
+Le modèle Zabbix de ce dépôt accepte n'importe quel JSON `/ops`. Pour les nouveaux projets, ce contrat commun rend les alertes, les mappings et la Tour de contrôle comparables, sans imposer de modifier une application déjà instrumentée.
 
 ## Rôles des endpoints
 
@@ -24,14 +24,29 @@ Le modèle Zabbix de ce dépôt accepte n'importe quel JSON `/ops`. Pour les nou
     "workers": {
       "status": "ok",
       "heartbeat_age_s": 18,
-      "queues": [{ "name": "default", "pending": 0, "oldest_job_age_s": 0 }]
+      "queues": {
+        "available": true,
+        "items": [
+          {
+            "name": "default",
+            "available": true,
+            "depth": 0,
+            "ready": 0,
+            "delayed": 0,
+            "reserved": 0,
+            "oldest_ready_job_age_s": null
+          }
+        ]
+      }
     },
     "errors": { "count_last_5m": 0 }
   }
 }
 ```
 
-Un champ n'est ajouté que si l'application possède une source fiable. Ne jamais transformer une donnée inconnue en `0` : omettre le champ ou retourner `null` avec une raison non sensible. Les états autorisés sont `ok`, `degraded` et `critical`.
+Un champ n'est ajouté que si l'application possède une source fiable. Ne jamais transformer une donnée inconnue en `0` : omettre le champ ou retourner `null` avec une raison non sensible. Pour une queue, `depth` est le total des jobs prêts, différés et réservés ; l'âge ne s'applique qu'au plus ancien job prêt. Les états autorisés sont `ok`, `degraded` et `critical`.
+
+Pour qu'une nouvelle application soit représentée dans la Tour de contrôle, elle doit fournir `status`. `generated_at` et `release.version` complètent sa fiche de santé ; leur absence n'empêche pas la collecte brute ni les métriques particulières. Les applications déjà instrumentées peuvent adopter ces champs progressivement.
 
 ## Sécurité et fiabilité
 

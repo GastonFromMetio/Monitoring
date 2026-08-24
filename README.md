@@ -1,6 +1,6 @@
 # Metio Monitoring
 
-Instance Zabbix auto-hébergée pour centraliser la supervision des serveurs, endpoints opérationnels et alertes. L'administration passe par une seule URL, une seule connexion et l'interface native Zabbix.
+Instance Zabbix auto-hébergée pour centraliser la supervision des serveurs, endpoints opérationnels et alertes. L'administration passe par une seule URL, une seule connexion et l'interface native Zabbix. Elle comprend une **Tour de contrôle** globale et une fiche de santé héritée par chaque application, afin que l'état soit lisible avant d'ouvrir les données détaillées.
 
 Le périmètre initial est volontairement limité à cinq applications : **Eviamemo**, **Eviaway**, **Npec**, **Stimergie Image Hub** et **TransCare**. Aucune URL, aucun token et aucune hypothèse sur leurs JSON ne sont enregistrés dans ce dépôt.
 
@@ -11,6 +11,8 @@ Le périmètre initial est volontairement limité à cinq applications : **Eviam
 - Zabbix Web, seule interface exposée via Traefik/Dokploy ;
 - un bootstrap one-shot qui sécurise le compte administrateur et précrée les cinq applications désactivées ;
 - le modèle `Metio API /ops — JSON générique`, utilisable dans le Host Wizard.
+- le dashboard global `Métio — Tour de contrôle` : état des applications, gravité et incidents ouverts ;
+- le dashboard d'hôte `Santé de l’application` : état, version, snapshot, incidents et données collectées.
 
 Le serveur Zabbix dispose aussi d'un réseau Docker dédié aux sorties HTTP vers les endpoints supervisés. PostgreSQL, le bootstrap et l'interface Web restent sur le réseau interne ; aucun port web supplémentaire n'est exposé.
 
@@ -32,9 +34,9 @@ Le bootstrap ne s'exécute qu'une seule fois grâce au volume `bootstrap-state`.
 
 ## Ajouter une application
 
-Les cinq hôtes sont visibles dans `Data collection → Hosts`, mais désactivés. Le parcours détaillé pour renseigner une URL `/ops`, tester le JSON, ajouter des JSONPath et créer les alertes est dans [docs/endpoint-configuration.md](docs/endpoint-configuration.md). Le [contrat recommandé des endpoints](docs/monitoring-endpoint-contract.md) décrit la base commune à privilégier pour les nouveaux projets.
+Les cinq hôtes sont visibles dans `Data collection → Hosts`, mais désactivés. Le parcours détaillé pour renseigner une URL `/ops`, tester le JSON, ajouter des JSONPath et créer les alertes est dans [docs/endpoint-configuration.md](docs/endpoint-configuration.md). Le [contrat recommandé des endpoints](docs/monitoring-endpoint-contract.md) décrit la base commune à privilégier pour les nouveaux projets, tandis que [docs/dashboard-configuration.md](docs/dashboard-configuration.md) explique le cockpit et ses conventions de classement.
 
-La structure du JSON est libre. Le modèle conserve d'abord la réponse brute ; les indicateurs particuliers à une application deviennent des *dependent items* dans Zabbix. Il utilise le header `X-Monitoring-Token` avec une macro secrète et garde son item ainsi que son trigger désactivés tant que l'URL n'a pas été testée. Cela évite d'imposer un contrat artificiel à Eviamemo, Eviaway, Npec, Stimergie Image Hub ou TransCare, ou de créer une alerte sur une URL d'exemple.
+La structure du JSON reste libre. Le modèle conserve d'abord la réponse brute ; les indicateurs particuliers à une application deviennent des *dependent items* dans Zabbix. Les nouveaux endpoints qui fournissent l'enveloppe recommandée obtiennent en plus un état coloré et comparable dans la Tour de contrôle. Le modèle utilise le header `X-Monitoring-Token` avec une macro secrète et garde son item ainsi que ses triggers désactivés tant que l'URL n'a pas été testée. Cela évite de créer une alerte sur une macro non configurée.
 
 ## Ajouter un serveur
 
