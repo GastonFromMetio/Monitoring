@@ -6,11 +6,11 @@ Les cinq applications précréées ne supposent ni URL ni structure JSON. Elles 
 
 1. Ouvrir **Data collection → Hosts**, puis l'application.
 2. Dans **Macros**, remplacer `{$OPS.URL}` par l'URL complète de l'endpoint.
-3. Si l'endpoint est protégé, saisir `Bearer <token>` dans `{$OPS.AUTHORIZATION}` et choisir le type de macro **Secret text**.
-4. Ouvrir **Items**, sélectionner `/ops: réponse JSON` puis **Test**. Corriger l'URL, le header ou le code attendu avant d'activer l'hôte.
+3. Saisir le token partagé par l'application dans `{$OPS.TOKEN}` et conserver le type de macro **Secret text**. Le modèle l'envoie dans le header `X-Monitoring-Token` : le token n'apparaît donc ni dans l'URL ni dans le dépôt.
+4. Ouvrir **Items**, sélectionner `/ops: réponse JSON` puis **Test**. Corriger l'URL, le header ou le code attendu avant de l'activer. Cet item est désactivé par défaut, comme son trigger générique, afin qu'une URL de démonstration ne génère jamais de faux incident.
 5. Dans l'hôte, créer un **Dependent item** dont le master est `/ops: réponse JSON`. Ajouter une étape de prétraitement **JSONPath** avec le chemin réel de l'application.
 6. Créer le trigger correspondant dans **Data collection → Hosts → Triggers**, avec une durée et une sévérité adaptées.
-7. Activer l'hôte uniquement après que le test et les premières valeurs sont corrects.
+7. Activer l'item `/ops: réponse JSON`, son trigger de disponibilité et l'hôte uniquement après que le test et les premières valeurs sont corrects.
 
 Les règles restent alors visibles, modifiables et auditables dans la même interface que les serveurs et les alertes.
 

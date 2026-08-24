@@ -87,12 +87,12 @@ ensure_template() {
       host: "metio.ops.generic",
       name: "Metio API /ops — JSON générique",
       description: "Point de départ pour tout endpoint opérationnel JSON à structure variable.",
-      readme: "Renseigner {$OPS.URL}, tester la réponse JSON, puis créer les items dépendants et les triggers propres à chaque application. Le format JSON est volontairement libre.",
+      readme: "Renseigner {$OPS.URL} et le secret {$OPS.TOKEN}, tester la réponse JSON, puis activer les contrôles propres à chaque application. Le format JSON est volontairement libre.",
       wizard_ready: 1,
       groups: [{groupid: $group_id}],
       macros: [
         {macro: "{$OPS.URL}", value: "https://replace-me.invalid/ops"},
-        {macro: "{$OPS.AUTHORIZATION}", value: ""}
+        {macro: "{$OPS.TOKEN}", value: "", type: 1}
       ]
     }')
     result=$(call template.create "$params" "$auth")
@@ -117,8 +117,9 @@ ensure_template() {
       status_codes: "200-299",
       follow_redirects: 1,
       retrieve_mode: 0,
-      headers: [{name: "Authorization", value: "{$OPS.AUTHORIZATION}"}],
-      description: "Réponse brute. Ajouter des items dépendants pour les champs JSON utiles."
+      headers: [{name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"}],
+      status: 1,
+      description: "Réponse brute. Désactivée par défaut pour éviter toute requête vers une URL de démonstration ; l’activer après le test de l’endpoint. Ajouter ensuite des items dépendants pour les champs JSON utiles."
     }')
     result=$(call item.create "$params" "$auth")
     item_id=$(printf '%s' "$result" | jq -r '.itemids[0]')
@@ -129,7 +130,7 @@ ensure_template() {
   trigger_id=$(printf '%s' "$result" | jq -r '.[0].triggerid // empty')
 
   if [ -z "$trigger_id" ]; then
-    params='{"description":"Endpoint /ops indisponible sur {HOST.NAME}","expression":"nodata(/metio.ops.generic/metio.ops.raw,5m)=1","priority":4,"manual_close":1,"tags":[{"tag":"metio.signal","value":"endpoint"}]}'
+    params='{"description":"Endpoint /ops indisponible sur {HOST.NAME}","expression":"nodata(/metio.ops.generic/metio.ops.raw,5m)=1","priority":4,"status":1,"manual_close":1,"tags":[{"tag":"metio.signal","value":"endpoint"}]}'
     call trigger.create "$params" "$auth" >/dev/null
   fi
 
@@ -152,7 +153,7 @@ ensure_application_host() {
       groups: [{groupid: $group_id}],
       templates: [{templateid: $template_id}],
       tags: [{tag: "metio.project", value: $project_id}, {tag: "metio.kind", value: "application"}],
-      macros: [{macro: "{$OPS.URL}", value: "https://replace-me.invalid/ops"}, {macro: "{$OPS.AUTHORIZATION}", value: ""}],
+      macros: [{macro: "{$OPS.URL}", value: "https://replace-me.invalid/ops"}, {macro: "{$OPS.TOKEN}", value: "", type: 1}],
       description: "Précréé par Monitoring. Désactivé tant que le endpoint et ses règles ne sont pas configurés dans Zabbix."
     }')
     call host.create "$params" "$auth" >/dev/null

@@ -34,7 +34,7 @@ Le bootstrap ne s'exécute qu'une seule fois grâce au volume `bootstrap-state`.
 
 Les cinq hôtes sont visibles dans `Data collection → Hosts`, mais désactivés. Le parcours détaillé pour renseigner une URL `/ops`, tester le JSON, ajouter des JSONPath et créer les alertes est dans [docs/endpoint-configuration.md](docs/endpoint-configuration.md). Le [contrat recommandé des endpoints](docs/monitoring-endpoint-contract.md) décrit la base commune à privilégier pour les nouveaux projets.
 
-La structure du JSON est libre. Le modèle conserve d'abord la réponse brute ; les indicateurs particuliers à une application deviennent des *dependent items* dans Zabbix. Cela évite d'imposer un contrat artificiel à Eviamemo, Eviaway, Npec, Stimergie Image Hub ou TransCare.
+La structure du JSON est libre. Le modèle conserve d'abord la réponse brute ; les indicateurs particuliers à une application deviennent des *dependent items* dans Zabbix. Il utilise le header `X-Monitoring-Token` avec une macro secrète et garde son item ainsi que son trigger désactivés tant que l'URL n'a pas été testée. Cela évite d'imposer un contrat artificiel à Eviamemo, Eviaway, Npec, Stimergie Image Hub ou TransCare, ou de créer une alerte sur une URL d'exemple.
 
 ## Ajouter un serveur
 
