@@ -439,13 +439,13 @@ ensure_application_host() {
 }
 
 echo "Attente de l'API Zabbix…"
-attempt=1
+bootstrap_deadline=$(( $(date +%s) + 180 ))
 auth=''
 admin_id=''
 password_is_default=0
 api_reachable=0
 admin_lookup_failed=0
-while [ "$attempt" -le 90 ]; do
+while [ "$(date +%s)" -lt "$bootstrap_deadline" ]; do
   if api_is_ready; then
     api_reachable=1
     auth=$(login zabbix || true)
@@ -467,7 +467,6 @@ while [ "$attempt" -le 90 ]; do
     fi
   fi
 
-  attempt=$((attempt + 1))
   sleep 2
 done
 
