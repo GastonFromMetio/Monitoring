@@ -6,8 +6,8 @@ set -eu
 
 api_url=${ZABBIX_API_URL:-http://zabbix-web:8080/api_jsonrpc.php}
 # Cette version laisse s'exécuter une seule migration de configuration sur les
-# instances amorcées avec seeded-v1 ou seeded-v2, sans modifier les objets déjà présents.
-state_file=/state/seeded-v3
+# instances amorcées avec seeded-v1 à seeded-v3, sans modifier les objets déjà présents.
+state_file=/state/seeded-v4
 projects_file=/bootstrap/projects.json
 request_id=0
 
@@ -661,6 +661,21 @@ ensure_application_host() {
   fi
 }
 
+ensure_host_template_link() {
+  host_id=$1
+  template_id=$2
+  params=$(jq -cn --arg host_id "$host_id" '{output: ["hostid"], hostids: [$host_id], selectParentTemplates: ["templateid"]}')
+  result=$(call host.get "$params" "$auth")
+
+  if printf '%s' "$result" | jq -e --arg template_id "$template_id" '.[0].parentTemplates[]? | select(.templateid == $template_id)' >/dev/null; then
+    return
+  fi
+
+  templates=$(printf '%s' "$result" | jq -ce --arg template_id "$template_id" '((.[0].parentTemplates // []) | map({templateid}) + [{templateid: $template_id}] | unique_by(.templateid))')
+  params=$(jq -cn --arg host_id "$host_id" --argjson templates "$templates" '{hostid: $host_id, templates: $templates}')
+  call host.update "$params" "$auth" >/dev/null
+}
+
 echo "Attente de l'API Zabbix…"
 bootstrap_deadline=$(( $(date +%s) + 180 ))
 auth=''
@@ -728,12 +743,25 @@ jq -r '.projects[] | [.id, .name] | join("|")' "$projects_file" | while IFS='|' 
 done
 
 eviamemo_host_id=$(printf '%s' "$(call host.get '{"output":["hostid"],"filter":{"host":["metio-app-eviamemo"]}}' "$auth")" | jq -r '.[0].hostid // empty')
-eviamemo_raw_item_id=$(get_item_id "$eviamemo_host_id" 'metio.ops.raw')
-if [ -n "$eviamemo_host_id" ] && [ -n "$eviamemo_raw_item_id" ]; then
-  ensure_eviamemo_profile "$eviamemo_host_id" "$eviamemo_raw_item_id"
-else
-  echo "Le profil Eviamemo n’a pas pu être préparé : l’hôte ou l’item /ops est introuvable." >&2
+if [ -z "$eviamemo_host_id" ]; then
+  echo "Le profil Eviamemo n’a pas pu être préparé : l’hôte est introuvable." >&2
   exit 1
+fi
+
+ensure_host_template_link "$eviamemo_host_id" "$template_id"
+
+# Les premières installations d’Eviamemo possèdent déjà une sonde dédiée
+# eviamemo.ops.raw. Le rattachement du modèle commun doit préserver cette
+# collecte active ; le profil commun est créé seulement sur les hôtes neufs.
+eviamemo_legacy_raw_item_id=$(get_item_id "$eviamemo_host_id" 'eviamemo.ops.raw')
+if [ -z "$eviamemo_legacy_raw_item_id" ]; then
+  eviamemo_raw_item_id=$(get_item_id "$eviamemo_host_id" 'metio.ops.raw')
+  if [ -n "$eviamemo_raw_item_id" ]; then
+    ensure_eviamemo_profile "$eviamemo_host_id" "$eviamemo_raw_item_id"
+  else
+    echo "Le profil Eviamemo n’a pas pu être préparé : l’item /ops est introuvable." >&2
+    exit 1
+  fi
 fi
 
 umask 077

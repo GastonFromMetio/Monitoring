@@ -49,3 +49,11 @@ choisis après observation de la charge réelle.
 
 Si un champ n'est pas encore fourni par le snapshot, l'item dépendant ignore cette valeur. Cela
 n'invente ni un zéro ni un incident.
+
+## Rattachement au modèle générique
+
+Eviamemo est aussi lié au modèle `Metio API /ops — JSON générique`, comme les autres applications.
+Sur les installations historiques, sa sonde dédiée `eviamemo.ops.raw` reste la collecte active : le
+rattachement n'active pas l'item générique ni ses triggers. Cela évite une double collecte pendant la
+transition. Pour basculer la collecte elle-même vers le modèle, renseigner `{$OPS.URL}` et le secret
+`{$OPS.TOKEN}`, tester `/ops`, puis désactiver explicitement la sonde dédiée après validation.
