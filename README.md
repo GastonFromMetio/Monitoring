@@ -13,6 +13,8 @@ Le périmètre initial est volontairement limité à cinq applications : **Eviam
 - le modèle `Metio API /ops — JSON générique`, utilisable dans le Host Wizard.
 - le dashboard global `Métio — Tour de contrôle` : état des applications, gravité et incidents ouverts ;
 - le dashboard d'hôte `Santé de l’application` : état, version, snapshot, incidents et données collectées.
+- le dashboard `Eviamemo — Exploitation` : dépendances, workers, queues, activité IA et snapshots
+  du premier profil applicatif concret.
 
 Le serveur Zabbix dispose aussi d'un réseau Docker dédié aux sorties HTTP vers les endpoints supervisés. PostgreSQL, le bootstrap et l'interface Web restent sur le réseau interne ; aucun port web supplémentaire n'est exposé.
 
@@ -30,11 +32,16 @@ Il n'y a ni Prometheus, ni Grafana, ni Alertmanager dans cette version.
 4. Déployer, puis attendre la fin du service `bootstrap`.
 5. Se connecter à `https://MONITORING_DOMAIN` avec `Admin` et `ZABBIX_ADMIN_PASSWORD`.
 
-Le bootstrap ne s'exécute qu'une seule fois grâce au volume `bootstrap-state`. Il ne remplace donc jamais ultérieurement un mot de passe ou une configuration modifiés depuis l'interface.
+Le bootstrap ne remplace jamais un mot de passe ou une configuration modifiés depuis l'interface.
+Son marqueur de version lui permet seulement d'ajouter une migration de configuration explicitement
+prévue lors d'une mise à jour du dépôt.
 
 ## Ajouter une application
 
 Les cinq hôtes sont visibles dans `Data collection → Hosts`, mais désactivés. Le parcours détaillé pour renseigner une URL `/ops`, tester le JSON, ajouter des JSONPath et créer les alertes est dans [docs/endpoint-configuration.md](docs/endpoint-configuration.md). Le [contrat recommandé des endpoints](docs/monitoring-endpoint-contract.md) décrit la base commune à privilégier pour les nouveaux projets, tandis que [docs/dashboard-configuration.md](docs/dashboard-configuration.md) explique le cockpit et ses conventions de classement.
+
+Eviamemo est le premier profil concret : les signaux et le parcours d'activation de son dashboard
+sont dans [docs/eviamemo-dashboard.md](docs/eviamemo-dashboard.md).
 
 La structure du JSON reste libre. Le modèle conserve d'abord la réponse brute ; les indicateurs particuliers à une application deviennent des *dependent items* dans Zabbix. Les nouveaux endpoints qui fournissent l'enveloppe recommandée obtiennent en plus un état coloré et comparable dans la Tour de contrôle. Le modèle utilise le header `X-Monitoring-Token` avec une macro secrète et garde son item ainsi que ses triggers désactivés tant que l'URL n'a pas été testée. Cela évite de créer une alerte sur une macro non configurée.
 

@@ -20,6 +20,12 @@ La page **Santé** ne contient que l'état normalisé, la version, l'horodatage 
 
 Cette séparation est volontaire : on accède à toute donnée collectée sans obliger l'astreinte à interpréter une page remplie de métriques non comparables.
 
+## Profil Eviamemo
+
+Le dashboard `Eviamemo — Exploitation` est le premier exemple de fiche spécialisée. Il remplace
+le JSON seul par des signaux opérationnels connus : dépendances, workers, queue, activité IA et
+incidents. Son contenu et son activation sont détaillés dans [eviamemo-dashboard.md](eviamemo-dashboard.md).
+
 ## Ajouter une vue spécialisée
 
 Après avoir observé une même famille de signaux sur plusieurs applications, créer un template Zabbix spécialisé plutôt que d'alourdir le cockpit commun. Par exemple : un profil `workers` pour les queues et heartbeats, ou un profil `dependencies` pour la latence base/cache/API.
