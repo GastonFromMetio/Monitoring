@@ -12,6 +12,8 @@ Le périmètre initial est volontairement limité à cinq applications : **Eviam
 - un bootstrap one-shot qui sécurise le compte administrateur et précrée les cinq applications désactivées ;
 - le modèle `Metio API /ops — JSON générique`, utilisable dans le Host Wizard.
 
+Le serveur Zabbix dispose aussi d'un réseau Docker dédié aux sorties HTTP vers les endpoints supervisés. PostgreSQL, le bootstrap et l'interface Web restent sur le réseau interne ; aucun port web supplémentaire n'est exposé.
+
 Il n'y a ni Prometheus, ni Grafana, ni Alertmanager dans cette version.
 
 ## Premier déploiement Dokploy
