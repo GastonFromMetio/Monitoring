@@ -18,7 +18,7 @@ services:
       - monitoring-internal
 
   zabbix-server:
-    image: zabbix/zabbix-server-pgsql:alpine-7.4.6
+    image: zabbix/zabbix-server-pgsql:alpine-7.4.14
     restart: unless-stopped
     environment:
       DB_SERVER_HOST: postgres
@@ -38,7 +38,7 @@ services:
       - monitoring-outbound
 
   zabbix-web:
-    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.4.6
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.4.14
     restart: unless-stopped
     environment:
       DB_SERVER_HOST: postgres
