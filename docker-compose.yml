@@ -26,6 +26,9 @@ services:
       POSTGRES_USER: zabbix
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env or Dokploy}
       ZBX_TIMEOUT: "10"
+      # Les macros temporelles des notifications ({EVENT.TIME}, etc.) sont
+      # développées par le serveur, indépendamment du fuseau PHP du frontend.
+      TZ: Europe/Paris
     depends_on:
       postgres:
         condition: service_healthy

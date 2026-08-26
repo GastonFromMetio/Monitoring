@@ -43,6 +43,10 @@ Les cinq hôtes sont visibles dans `Data collection → Hosts`, mais désactivé
 Eviamemo est le premier profil concret : les signaux et le parcours d'activation de son dashboard
 sont dans [docs/eviamemo-dashboard.md](docs/eviamemo-dashboard.md).
 
+L'architecture effective des alertes HTTP, readiness, `/ops` et du routage
+Slack est décrite dans
+[docs/alerting-notifications.md](docs/alerting-notifications.md).
+
 La structure du JSON reste libre. Le modèle conserve d'abord la réponse brute ; les indicateurs particuliers à une application deviennent des *dependent items* dans Zabbix. Les nouveaux endpoints qui fournissent l'enveloppe recommandée obtiennent en plus un état coloré et comparable dans la Tour de contrôle. Le modèle utilise le header `X-Monitoring-Token` avec une macro secrète et garde son item ainsi que ses triggers désactivés tant que l'URL n'a pas été testée. Cela évite de créer une alerte sur une macro non configurée.
 
 ## Ajouter un serveur
