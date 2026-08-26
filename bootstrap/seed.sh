@@ -5,9 +5,13 @@ set -eu
 : "${ZABBIX_ADMIN_PASSWORD:?ZABBIX_ADMIN_PASSWORD is required}"
 
 api_url=${ZABBIX_API_URL:-http://zabbix-web:8080/api_jsonrpc.php}
-# Cette version laisse s'exécuter une seule migration de configuration sur les
-# instances amorcées avec seeded-v1 à seeded-v3, sans modifier les objets déjà présents.
-state_file=/state/seeded-v4
+# Cette version laisse s'exécuter une seule migration de configuration. La
+# présence de seeded-v4 permet de préserver les objets supprimés volontairement
+# dans l'interface, en particulier l'ancien dashboard global.
+state_file=/state/seeded-v5
+previous_state_file=/state/seeded-v4
+upgrade_from_v4=0
+[ -f "$previous_state_file" ] && upgrade_from_v4=1
 projects_file=/bootstrap/projects.json
 request_id=0
 
@@ -154,6 +158,280 @@ get_item_id() {
   params=$(jq -cn --arg host_id "$host_id" --arg item_key "$item_key" '{output: ["itemid"], hostids: [$host_id], filter: {key_: [$item_key]}}')
   result=$(call item.get "$params" "$auth")
   printf '%s' "$result" | jq -r '.[0].itemid // empty'
+}
+
+get_host_id() {
+  technical_name=$1
+  params=$(jq -cn --arg host "$technical_name" '{output: ["hostid"], filter: {host: [$host]}}')
+  result=$(call host.get "$params" "$auth")
+  printf '%s' "$result" | jq -r '.[0].hostid // empty'
+}
+
+get_template_id() {
+  technical_name=$1
+  params=$(jq -cn --arg host "$technical_name" '{output: ["templateid"], filter: {host: [$host]}}')
+  result=$(call template.get "$params" "$auth")
+  printf '%s' "$result" | jq -r '.[0].templateid // empty'
+}
+
+get_template_trigger_id() {
+  template_id=$1
+  description=$2
+  params=$(jq -cn --arg template_id "$template_id" --arg description "$description" '{output: ["triggerid"], hostids: [$template_id], filter: {description: [$description]}}')
+  result=$(call trigger.get "$params" "$auth")
+  printf '%s' "$result" | jq -r '.[0].triggerid // empty'
+}
+
+ensure_host_macro() {
+  host_id=$1
+  macro_name=$2
+  macro_value=$3
+  params=$(jq -cn --arg host_id "$host_id" --arg macro "$macro_name" '{output: ["hostmacroid"], hostids: [$host_id], filter: {macro: [$macro]}}')
+  result=$(call usermacro.get "$params" "$auth")
+  macro_id=$(printf '%s' "$result" | jq -r '.[0].hostmacroid // empty')
+
+  if [ -z "$macro_id" ]; then
+    params=$(jq -cn --arg host_id "$host_id" --arg macro "$macro_name" --arg value "$macro_value" '{hostid: $host_id, macro: $macro, value: $value, type: 0}')
+    call usermacro.create "$params" "$auth" >/dev/null
+  else
+    params=$(jq -cn --arg hostmacroid "$macro_id" --arg value "$macro_value" '{hostmacroid: $hostmacroid, value: $value}')
+    call usermacro.update "$params" "$auth" >/dev/null
+  fi
+}
+
+ensure_liveness_template() {
+  template_id=$(get_template_id 'metio.http.liveness')
+  description='Contrôle HTTP public et léger confirmant que l’application répond. Configurer {$HEALTH.URL} sur chaque hôte avant de lier ce modèle.'
+
+  if [ -z "$template_id" ]; then
+    params=$(jq -cn --arg group_id "$template_group_id" --arg description "$description" '{
+      host: "metio.http.liveness",
+      name: "Metio HTTP — Présence",
+      description: $description,
+      groups: [{groupid: $group_id}],
+      macros: [{macro: "{$HEALTH.URL}", value: ""}]
+    }')
+    result=$(call template.create "$params" "$auth")
+    template_id=$(printf '%s' "$result" | jq -r '.templateids[0]')
+  else
+    params=$(jq -cn --arg template_id "$template_id" --arg description "$description" '{templateid: $template_id, name: "Metio HTTP — Présence", description: $description}')
+    call template.update "$params" "$auth" >/dev/null
+  fi
+
+  item_id=$(get_item_id "$template_id" 'metio.health.raw')
+  if [ -z "$item_id" ]; then
+    params=$(jq -cn --arg template_id "$template_id" '{
+      hostid: $template_id,
+      name: "Présence HTTP : réponse",
+      key_: "metio.health.raw",
+      type: 19,
+      value_type: 4,
+      delay: "1m",
+      url: "{$HEALTH.URL}",
+      request_method: 0,
+      timeout: "10s",
+      status_codes: "200",
+      follow_redirects: 1,
+      retrieve_mode: 0,
+      status: 0,
+      tags: [
+        {tag: "metio.domain", value: "health"},
+        {tag: "metio.signal", value: "liveness"}
+      ],
+      description: "Réponse brute de l’endpoint public de présence. Une valeur fraîche confirme que l’application répond en HTTP 200."
+    }')
+    call item.create "$params" "$auth" >/dev/null
+  fi
+
+  trigger_id=$(get_template_trigger_id "$template_id" 'Application inaccessible sur {HOST.NAME}')
+  trigger_params=$(jq -cn --arg template_id "$template_id" '{
+    description: "Application inaccessible sur {HOST.NAME}",
+    expression: "nodata(/metio.http.liveness/metio.health.raw,3m)=1",
+    priority: 4,
+    status: 0,
+    manual_close: 1,
+    comments: "Le contrôle public de présence n’a fourni aucune valeur valide depuis 3 minutes. Vérifier d’abord le collecteur HTTP/DNS, puis l’application, son routage et son endpoint de présence.",
+    opdata: "Aucune réponse HTTP 200 depuis 3 minutes.",
+    tags: [
+      {tag: "metio.domain", value: "health"},
+      {tag: "metio.signal", value: "liveness"}
+    ]
+  }')
+  if [ -z "$trigger_id" ]; then
+    call trigger.create "$trigger_params" "$auth" >/dev/null
+  else
+    params=$(printf '%s' "$trigger_params" | jq -c --arg trigger_id "$trigger_id" '. + {triggerid: $trigger_id}')
+    call trigger.update "$params" "$auth" >/dev/null
+  fi
+
+  printf '%s' "$template_id"
+}
+
+ensure_readiness_template() {
+  template_id=$(get_template_id 'metio.http.readiness')
+  description='Contrôle HTTP confirmant que l’application peut servir. Configurer {$READY.URL} et {$OPS.TOKEN} avant de lier ce modèle.'
+
+  if [ -z "$template_id" ]; then
+    params=$(jq -cn --arg group_id "$template_group_id" --arg description "$description" '{
+      host: "metio.http.readiness",
+      name: "Metio HTTP — Readiness",
+      description: $description,
+      groups: [{groupid: $group_id}],
+      macros: [{macro: "{$READY.URL}", value: ""}]
+    }')
+    result=$(call template.create "$params" "$auth")
+    template_id=$(printf '%s' "$result" | jq -r '.templateids[0]')
+  else
+    params=$(jq -cn --arg template_id "$template_id" --arg description "$description" '{templateid: $template_id, name: "Metio HTTP — Readiness", description: $description}')
+    call template.update "$params" "$auth" >/dev/null
+  fi
+
+  item_id=$(get_item_id "$template_id" 'metio.ready.raw')
+  if [ -z "$item_id" ]; then
+    params=$(jq -cn --arg template_id "$template_id" '{
+      hostid: $template_id,
+      name: "Readiness HTTP : réponse",
+      key_: "metio.ready.raw",
+      type: 19,
+      value_type: 4,
+      delay: "1m",
+      url: "{$READY.URL}",
+      request_method: 0,
+      timeout: "10s",
+      status_codes: "200",
+      follow_redirects: 1,
+      retrieve_mode: 0,
+      headers: [{name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"}],
+      status: 0,
+      tags: [
+        {tag: "metio.domain", value: "health"},
+        {tag: "metio.signal", value: "readiness"}
+      ],
+      description: "Réponse brute de l’endpoint readiness. Une valeur fraîche confirme que les dépendances indispensables sont prêtes."
+    }')
+    call item.create "$params" "$auth" >/dev/null
+  fi
+
+  trigger_id=$(get_template_trigger_id "$template_id" 'Application non prête sur {HOST.NAME}')
+  trigger_params=$(jq -cn '{
+    description: "Application non prête sur {HOST.NAME}",
+    expression: "nodata(/metio.http.readiness/metio.ready.raw,5m)=1",
+    priority: 3,
+    status: 0,
+    manual_close: 1,
+    comments: "Le contrôle readiness n’a fourni aucune valeur valide depuis 5 minutes. Vérifier d’abord le collecteur HTTP/DNS, puis la présence HTTP et les dépendances applicatives.",
+    opdata: "Aucune réponse readiness HTTP 200 depuis 5 minutes.",
+    tags: [
+      {tag: "metio.domain", value: "health"},
+      {tag: "metio.signal", value: "readiness"}
+    ]
+  }')
+  if [ -z "$trigger_id" ]; then
+    call trigger.create "$trigger_params" "$auth" >/dev/null
+  else
+    params=$(printf '%s' "$trigger_params" | jq -c --arg trigger_id "$trigger_id" '. + {triggerid: $trigger_id}')
+    call trigger.update "$params" "$auth" >/dev/null
+  fi
+
+  printf '%s' "$template_id"
+}
+
+ensure_collector_host() {
+  host_id=$(get_host_id 'metio-monitoring-collector')
+  if [ -z "$host_id" ]; then
+    params=$(jq -cn --arg group_id "$applications_group_id" '{
+      host: "metio-monitoring-collector",
+      name: "Metio Monitoring — Collecteur HTTP",
+      status: 0,
+      groups: [{groupid: $group_id}],
+      tags: [
+        {tag: "metio.project", value: "monitoring"},
+        {tag: "metio.kind", value: "collector"}
+      ],
+      description: "Contrôle la sortie HTTP et la résolution DNS du serveur Zabbix. Les alertes applicatives en dépendent pour éviter les faux positifs de collecte."
+    }')
+    result=$(call host.create "$params" "$auth")
+    host_id=$(printf '%s' "$result" | jq -r '.hostids[0]')
+  fi
+  printf '%s' "$host_id"
+}
+
+ensure_collector_http_item() {
+  host_id=$1
+  item_name=$2
+  item_key=$3
+  item_url=$4
+  item_description=$5
+  item_id=$(get_item_id "$host_id" "$item_key")
+
+  if [ -z "$item_id" ]; then
+    params=$(jq -cn --arg host_id "$host_id" --arg name "$item_name" --arg key "$item_key" --arg url "$item_url" --arg description "$item_description" '{
+      hostid: $host_id,
+      name: $name,
+      key_: $key,
+      type: 19,
+      value_type: 4,
+      delay: "30s",
+      url: $url,
+      request_method: 0,
+      timeout: "5s",
+      status_codes: "200",
+      follow_redirects: 1,
+      retrieve_mode: 0,
+      status: 0,
+      tags: [
+        {tag: "metio.domain", value: "monitoring"},
+        {tag: "metio.signal", value: "collector"}
+      ],
+      description: $description
+    }')
+    result=$(call item.create "$params" "$auth")
+    item_id=$(printf '%s' "$result" | jq -r '.itemids[0]')
+  fi
+
+  printf '%s' "$item_id"
+}
+
+ensure_collector_trigger() {
+  host_id=$1
+  description=$2
+  expression=$3
+  priority=$4
+  signal=$5
+  opdata=$6
+  trigger_id=$(get_template_trigger_id "$host_id" "$description")
+  trigger_params=$(jq -cn --arg description "$description" --arg expression "$expression" --argjson priority "$priority" --arg signal "$signal" --arg opdata "$opdata" '{
+    description: $description,
+    expression: $expression,
+    priority: $priority,
+    status: 0,
+    manual_close: 1,
+    comments: "Incident de collecte Zabbix. Les alertes applicatives HTTP, readiness et /ops dépendent de ce signal.",
+    opdata: $opdata,
+    tags: [
+      {tag: "metio.domain", value: "monitoring"},
+      {tag: "metio.signal", value: $signal}
+    ]
+  }')
+  if [ -z "$trigger_id" ]; then
+    result=$(call trigger.create "$trigger_params" "$auth")
+    trigger_id=$(printf '%s' "$result" | jq -r '.triggerids[0]')
+  else
+    params=$(printf '%s' "$trigger_params" | jq -c --arg trigger_id "$trigger_id" '. + {triggerid: $trigger_id}')
+    call trigger.update "$params" "$auth" >/dev/null
+  fi
+  printf '%s' "$trigger_id"
+}
+
+ensure_trigger_dependencies() {
+  trigger_id=$1
+  shift
+  dependencies='[]'
+  for dependency_id in "$@"; do
+    dependencies=$(printf '%s' "$dependencies" | jq -c --arg triggerid "$dependency_id" '. + [{triggerid: $triggerid}]')
+  done
+  params=$(jq -cn --arg trigger_id "$trigger_id" --argjson dependencies "$dependencies" '{triggerid: $trigger_id, dependencies: $dependencies}')
+  call trigger.update "$params" "$auth" >/dev/null
 }
 
 ensure_status_value_map() {
@@ -641,18 +919,20 @@ ensure_global_dashboard() {
 ensure_application_host() {
   project_id=$1
   project_name=$2
+  application_ops_template_id=$3
+  application_liveness_template_id=$4
   technical_name="metio-app-$project_id"
   params=$(jq -cn --arg host "$technical_name" '{output: ["hostid"], filter: {host: [$host]}}')
   result=$(call host.get "$params" "$auth")
   host_id=$(printf '%s' "$result" | jq -r '.[0].hostid // empty')
 
   if [ -z "$host_id" ]; then
-    params=$(jq -cn --arg host "$technical_name" --arg name "$project_name" --arg group_id "$applications_group_id" --arg template_id "$template_id" --arg project_id "$project_id" '{
+    params=$(jq -cn --arg host "$technical_name" --arg name "$project_name" --arg group_id "$applications_group_id" --arg template_id "$application_ops_template_id" --arg liveness_template_id "$application_liveness_template_id" --arg project_id "$project_id" '{
       host: $host,
       name: $name,
       status: 1,
       groups: [{groupid: $group_id}],
-      templates: [{templateid: $template_id}],
+      templates: [{templateid: $template_id}, {templateid: $liveness_template_id}],
       tags: [{tag: "metio.project", value: $project_id}, {tag: "metio.kind", value: "application"}],
       macros: [{macro: "{$OPS.URL}", value: ""}, {macro: "{$OPS.TOKEN}", value: "", type: 1}],
       description: "Précréé par Monitoring. Désactivé tant que le endpoint et ses règles ne sont pas configurés dans Zabbix."
@@ -727,7 +1007,23 @@ fi
 
 applications_group_id=$(ensure_host_group 'Metio / Applications')
 template_group_id=$(ensure_template_group 'Metio / Endpoints')
+
+liveness_template_id=$(ensure_liveness_template)
+liveness_trigger_id=$(get_template_trigger_id "$liveness_template_id" 'Application inaccessible sur {HOST.NAME}')
+readiness_template_id=$(ensure_readiness_template)
+readiness_trigger_id=$(get_template_trigger_id "$readiness_template_id" 'Application non prête sur {HOST.NAME}')
+
+collector_host_id=$(ensure_collector_host)
+ensure_collector_http_item "$collector_host_id" 'Collecteur HTTP : sortie directe sans DNS' 'metio.collector.http.ip' 'https://1.1.1.1/cdn-cgi/trace' 'Contrôle la sortie HTTPS du serveur Zabbix sans dépendre de la résolution DNS.' >/dev/null
+ensure_collector_http_item "$collector_host_id" 'Collecteur HTTP : sortie avec DNS' 'metio.collector.http.dns' 'https://one.one.one.one/cdn-cgi/trace' 'Contrôle la résolution DNS et la sortie HTTPS du serveur Zabbix.' >/dev/null
+collector_outbound_trigger_id=$(ensure_collector_trigger "$collector_host_id" 'Sortie HTTP du collecteur Zabbix indisponible' 'nodata(/metio-monitoring-collector/metio.collector.http.ip,2m)=1' 4 'collector_outbound' 'Aucune sortie HTTPS directe depuis 2 minutes.')
+collector_dns_trigger_id=$(ensure_collector_trigger "$collector_host_id" 'Résolution DNS du collecteur Zabbix indisponible' 'nodata(/metio-monitoring-collector/metio.collector.http.dns,2m)=1 and nodata(/metio-monitoring-collector/metio.collector.http.ip,2m)=0' 3 'collector_dns' 'La sortie HTTPS directe fonctionne, mais aucune résolution DNS valide depuis 2 minutes.')
+
+ensure_trigger_dependencies "$liveness_trigger_id" "$collector_outbound_trigger_id" "$collector_dns_trigger_id"
+ensure_trigger_dependencies "$readiness_trigger_id" "$liveness_trigger_id" "$collector_outbound_trigger_id" "$collector_dns_trigger_id"
+
 template_id=$(ensure_template)
+ops_template_id=$template_id
 raw_item_id=$(get_item_id "$template_id" 'metio.ops.raw')
 status_value_map_id=$(ensure_status_value_map "$template_id")
 status_item_id=$(ensure_ops_status_item "$template_id" "$raw_item_id" "$status_value_map_id")
@@ -735,11 +1031,29 @@ release_item_id=$(ensure_ops_text_item "$template_id" "$raw_item_id" 'Version d�
 generated_at_item_id=$(ensure_ops_text_item "$template_id" "$raw_item_id" 'Snapshot /ops généré le' 'metio.ops.generated_at' '$.generated_at' 'health' 'snapshot_time')
 ensure_ops_trigger 'Application dégradée sur {HOST.NAME}' 'last(/metio.ops.generic/metio.ops.status.code)=1' 2 'status' 'État déclaré : {ITEM.LASTVALUE}'
 ensure_ops_trigger 'Application critique sur {HOST.NAME}' 'last(/metio.ops.generic/metio.ops.status.code)=2' 4 'status' 'État déclaré : {ITEM.LASTVALUE}'
-ensure_template_dashboard "$template_id" "$raw_item_id" "$status_item_id" "$release_item_id" "$generated_at_item_id"
-ensure_global_dashboard "$applications_group_id"
 
-jq -r '.projects[] | [.id, .name] | join("|")' "$projects_file" | while IFS='|' read -r project_id project_name; do
-  ensure_application_host "$project_id" "$project_name"
+ops_unavailable_trigger_id=$(get_template_trigger_id "$template_id" 'Endpoint /ops indisponible sur {HOST.NAME}')
+ops_degraded_trigger_id=$(get_template_trigger_id "$template_id" 'Application dégradée sur {HOST.NAME}')
+ops_critical_trigger_id=$(get_template_trigger_id "$template_id" 'Application critique sur {HOST.NAME}')
+ensure_trigger_dependencies "$ops_unavailable_trigger_id" "$liveness_trigger_id" "$collector_outbound_trigger_id" "$collector_dns_trigger_id"
+ensure_trigger_dependencies "$ops_degraded_trigger_id" "$ops_unavailable_trigger_id" "$collector_outbound_trigger_id" "$collector_dns_trigger_id"
+ensure_trigger_dependencies "$ops_critical_trigger_id" "$ops_unavailable_trigger_id" "$collector_outbound_trigger_id" "$collector_dns_trigger_id"
+
+ensure_template_dashboard "$template_id" "$raw_item_id" "$status_item_id" "$release_item_id" "$generated_at_item_id"
+if [ "$upgrade_from_v4" -eq 0 ]; then
+  ensure_global_dashboard "$applications_group_id"
+fi
+
+jq -r '.projects[] | [.id, .name, .health_url, (.ready_url // "")] | join("|")' "$projects_file" | while IFS='|' read -r project_id project_name health_url ready_url; do
+  ensure_application_host "$project_id" "$project_name" "$ops_template_id" "$liveness_template_id"
+  application_host_id=$(get_host_id "metio-app-$project_id")
+  ensure_host_template_link "$application_host_id" "$liveness_template_id"
+  ensure_host_macro "$application_host_id" '{$HEALTH.URL}' "$health_url"
+
+  if [ -n "$ready_url" ]; then
+    ensure_host_template_link "$application_host_id" "$readiness_template_id"
+    ensure_host_macro "$application_host_id" '{$READY.URL}' "$ready_url"
+  fi
 done
 
 eviamemo_host_id=$(printf '%s' "$(call host.get '{"output":["hostid"],"filter":{"host":["metio-app-eviamemo"]}}' "$auth")" | jq -r '.[0].hostid // empty')
@@ -748,7 +1062,7 @@ if [ -z "$eviamemo_host_id" ]; then
   exit 1
 fi
 
-ensure_host_template_link "$eviamemo_host_id" "$template_id"
+ensure_host_template_link "$eviamemo_host_id" "$ops_template_id"
 
 # Les premières installations d’Eviamemo possèdent déjà une sonde dédiée
 # eviamemo.ops.raw. Le rattachement du modèle commun doit préserver cette
@@ -766,4 +1080,4 @@ fi
 
 umask 077
 touch "$state_file"
-echo "Bootstrap Zabbix terminé : cinq applications précréées, la tour de contrôle, les dashboards de santé et le profil Eviamemo sont disponibles."
+echo "Bootstrap Zabbix terminé : sondes HTTP/readiness, garde-fous du collecteur, dépendances d’alertes et profils applicatifs disponibles."

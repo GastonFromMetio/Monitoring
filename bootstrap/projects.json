@@ -1,9 +1,33 @@
 {
   "projects": [
-    { "id": "eviamemo", "name": "Eviamemo" },
-    { "id": "eviaway", "name": "Eviaway" },
-    { "id": "npec", "name": "Npec" },
-    { "id": "stimergie-image-hub", "name": "Stimergie Image Hub" },
-    { "id": "transcare", "name": "TransCare" }
+    {
+      "id": "eviamemo",
+      "name": "Eviamemo",
+      "health_url": "https://eviamemo.713.fr/health",
+      "ready_url": "https://eviamemo.713.fr/ready"
+    },
+    {
+      "id": "eviaway",
+      "name": "Eviaway",
+      "health_url": "https://eviaway.713.fr/health"
+    },
+    {
+      "id": "npec",
+      "name": "Npec",
+      "health_url": "https://npec.mgacf.fr/up",
+      "ready_url": "https://npec.mgacf.fr/ready"
+    },
+    {
+      "id": "stimergie-image-hub",
+      "name": "Stimergie Image Hub",
+      "health_url": "https://stimergie.metio-dev.fr/healthz.txt",
+      "ready_url": "https://stimergie.metio-dev.fr/ready"
+    },
+    {
+      "id": "transcare",
+      "name": "TransCare",
+      "health_url": "https://transcare.713.fr/healthz.txt",
+      "ready_url": "https://transcare.713.fr/ready"
+    }
   ]
 }

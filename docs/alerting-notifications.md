@@ -66,11 +66,34 @@ Le JSON brut reste consultable dans Zabbix pour approfondir l'incident. Il ne
 doit jamais contenir de secret, stack trace brute, contenu de job, identifiant
 métier ni donnée personnelle.
 
-À terme, les alertes de composants devront dépendre de la disponibilité de
-`/ops`, et l'alerte `Endpoint /ops indisponible` de la présence HTTP. Cette
-hiérarchie évitera qu'un arrêt complet produise en même temps une alerte HTTP,
-une alerte `/ready`, une alerte `/ops` et plusieurs alertes de composants. Ces
-dépendances ne sont pas encore enregistrées dans la configuration actuelle.
+Les alertes readiness et `/ops` dépendent de la présence HTTP. Les alertes
+issues du JSON `/ops` dépendent de la disponibilité de leur item maître. Tous
+ces contrôles dépendent aussi du collecteur HTTP/DNS Zabbix. Cette hiérarchie
+évite qu'un arrêt complet ou une panne de collecte produise en même temps une
+alerte HTTP, une alerte `/ready`, une alerte `/ops` et plusieurs alertes de
+composants.
+
+## Santé du collecteur Zabbix
+
+L'hôte `Metio Monitoring — Collecteur HTTP` exécute toutes les 30 secondes deux
+contrôles vers le même service HTTPS :
+
+- `https://1.1.1.1/cdn-cgi/trace`, sans résolution DNS ;
+- `https://one.one.one.one/cdn-cgi/trace`, avec résolution DNS.
+
+Après deux minutes sans valeur directe, Zabbix ouvre
+`Sortie HTTP du collecteur Zabbix indisponible`. Si la sortie directe reste
+fonctionnelle mais que le contrôle nommé ne fournit plus de valeur, il ouvre
+`Résolution DNS du collecteur Zabbix indisponible`. Les triggers applicatifs
+dépendent directement de ces deux problèmes racine : ils ne changent donc pas
+d'état et ne notifient pas Slack lorsque leurs données sont rendues non fiables
+par le collecteur.
+
+Le conteneur `zabbix-server` utilise en plus deux résolveurs explicites,
+configurables par `ZABBIX_DNS_PRIMARY` et `ZABBIX_DNS_SECONDARY`. Cette mesure
+corrige la collecte ; les triggers du collecteur restent le garde-fou qui
+empêche une future panne réseau ou DNS d'être présentée comme plusieurs pannes
+applicatives.
 
 ## Endpoints observés le 26 août 2026
 
@@ -169,7 +192,7 @@ déclencheur, la valeur opérationnelle disponible, l'heure et un lien vers le
 problème Zabbix. Les notifications de déploiement prévues doivent être évitées
 avec une période de maintenance Zabbix.
 
-## Dépendances à ajouter pour réduire davantage le bruit
+## Dépendances enregistrées pour réduire le bruit
 
 Ordre des causes, de la plus fondamentale à la plus détaillée :
 
@@ -178,11 +201,10 @@ Ordre des causes, de la plus fondamentale à la plus détaillée :
 3. disponibilité de `/ops` ;
 4. composants et métriques extraits de `/ops`.
 
-La configuration actuelle n'enregistre pas encore cette chaîne comme
-dépendances Zabbix. Les temporisations de trois et cinq minutes limitent déjà
-les événements brefs, mais une panne complète peut encore ouvrir plusieurs
-problèmes. L'ajout de ces dépendances est donc une amélioration à planifier ;
-il devra être validé hôte par hôte pour ne pas masquer un vrai incident.
+La configuration enregistre cette chaîne, plus deux dépendances directes vers
+les problèmes racine du collecteur. La dépendance directe est volontaire : si
+le trigger de présence est lui-même bloqué par le collecteur et reste à `OK`,
+les niveaux readiness et `/ops` doivent quand même être bloqués.
 
 ## Journaux et supervision Docker reportés
 
@@ -225,6 +247,13 @@ Pour chaque application :
 6. constater le problème dans Zabbix et le message Slack ;
 7. restaurer le service et constater la notification de récupération ;
 8. vérifier l'entrée correspondante dans le journal des actions.
+
+À 16 h 27 le même jour, plusieurs sondes sont devenues non supportées avec
+`Could not resolve host` ou `Could not contact DNS servers`, alors que les
+endpoints publics répondaient en HTTP 200 depuis l'extérieur. Les triggers
+`nodata` ont produit une cascade présence/readiness. Cet incident est la raison
+de l'ajout des résolveurs explicites, de l'hôte collecteur et des dépendances
+directes décrites ci-dessus.
 
 Un test du type de média Slack ne remplace pas ce test complet. Enfin, si
 Zabbix et toutes les applications sont hébergés sur le même serveur, Zabbix ne
