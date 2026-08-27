@@ -1109,7 +1109,7 @@ jq -r '.projects[] | [.id, .name, .health_url, (.ready_url // "")] | join("|")' 
 done
 
 ensure_collector_missing_apps_item "$collector_host_id" >/dev/null
-collector_apps_trigger_id=$(ensure_collector_trigger "$collector_host_id" 'Collecte HTTP multi-applications interrompue' 'last(/metio-monitoring-collector/metio.collector.apps.missing)>=3' 4 'collector_multi_app' 'Au moins trois applications sur cinq sont sans donnée récente : {ITEM.LASTVALUE}.')
+collector_apps_trigger_id=$(ensure_collector_trigger "$collector_host_id" 'Collecte HTTP multi-applications interrompue' 'last(/metio-monitoring-collector/metio.collector.apps.missing)>=3' 1 'collector_multi_app' 'Au moins trois applications sur cinq sont sans donnée récente : {ITEM.LASTVALUE}. Signal interne non notifié sur Slack.')
 
 ensure_trigger_dependencies "$liveness_trigger_id" "$collector_apps_trigger_id"
 ensure_trigger_dependencies "$readiness_trigger_id" "$liveness_trigger_id" "$collector_apps_trigger_id"

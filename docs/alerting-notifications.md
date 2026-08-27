@@ -93,7 +93,9 @@ applications. L'item calculé `metio.collector.apps.missing` compte toutes les
 Si au moins trois applications sur cinq sont concernées, Zabbix ouvre un seul
 problème `Collecte HTTP multi-applications interrompue`. Les triggers de
 présence applicatifs, réglés à trois minutes, en dépendent et ne notifient donc
-pas séparément Slack.
+pas séparément Slack. Ce problème est classé **Information** : il reste visible
+dans Zabbix pour porter les dépendances, mais l'action Slack, qui commence à la
+sévérité **Moyenne**, ne l'envoie pas.
 
 Les anciens items Cloudflare/Google et les triggers `Sortie HTTP du collecteur
 Zabbix indisponible` / `Résolution DNS du collecteur Zabbix indisponible` sont
@@ -185,6 +187,7 @@ dans les notifications, indépendamment du fuseau PHP de l'interface Web.
 | Readiness perdue | Moyenne | oui | 5 minutes |
 | `/ops` dégradé | Moyenne | oui | à la valeur `degraded` |
 | `/ops` critique | Haute | oui | immédiat |
+| Collecte multi-applications | Information | non | visible dans Zabbix |
 | Information ou événement bref | Information/Avertissement | non | visible dans Zabbix |
 
 Chaque incident notifié doit produire :
