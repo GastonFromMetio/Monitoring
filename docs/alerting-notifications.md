@@ -75,11 +75,17 @@ composants.
 
 ## Santé du collecteur Zabbix
 
-Le conteneur `zabbix-server` transmet ses requêtes DNS publiques à un proxy
-local dédié. Ce proxy contacte deux adresses Cloudflare en DNS-over-HTTPS sur
-le port 443, met les réponses en cache et peut servir temporairement une
-réponse expirée pendant qu'il tente de la rafraîchir. Il ne dépend donc plus de
-la disponibilité de DNS publics en UDP/TCP 53 depuis l'hôte de déploiement.
+Les cinq domaines applicatifs sont associés à leurs IP publiques dans le
+conteneur `zabbix-server` avec `extra_hosts`. Les URL Zabbix conservent leur nom
+de domaine : le routage HTTP `Host` et le SNI TLS restent donc corrects, mais
+la collecte ne consulte plus de serveur DNS. Cette configuration remplace le
+proxy DNS local, qui avait lui-même cessé de répondre le 27 août 2026 et était
+devenu un point unique de panne.
+
+Lorsqu'une application change de serveur, mettre à jour la variable
+`<APPLICATION>_MONITORING_IP` correspondante dans Dokploy au même moment que
+le DNS public. Les valeurs par défaut du Compose sont les IP vérifiées le
+27 août 2026.
 
 Le signal racine n'utilise plus des cibles externes différentes des
 applications. L'item calculé `metio.collector.apps.missing` compte toutes les
