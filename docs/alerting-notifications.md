@@ -75,25 +75,25 @@ composants.
 
 ## Santé du collecteur Zabbix
 
-L'hôte `Metio Monitoring — Collecteur HTTP` exécute toutes les 30 secondes deux
-contrôles vers le même service HTTPS :
+L'hôte `Metio Monitoring — Collecteur HTTP` exécute toutes les 30 secondes
+quatre contrôles répartis entre deux fournisseurs indépendants :
 
-- `https://1.1.1.1/cdn-cgi/trace`, sans résolution DNS ;
-- `https://one.one.one.one/cdn-cgi/trace`, avec résolution DNS.
+- Cloudflare par adresse IP et par nom DNS ;
+- Google par adresse IP et par nom DNS.
 
-Après deux minutes sans valeur directe, Zabbix ouvre
-`Sortie HTTP du collecteur Zabbix indisponible`. Si la sortie directe reste
-fonctionnelle mais que le contrôle nommé ne fournit plus de valeur, il ouvre
-`Résolution DNS du collecteur Zabbix indisponible`. Les triggers applicatifs
-dépendent directement de ces deux problèmes racine : ils ne changent donc pas
-d'état et ne notifient pas Slack lorsque leurs données sont rendues non fiables
-par le collecteur.
+Zabbix ouvre `Sortie HTTP du collecteur Zabbix indisponible` seulement lorsque
+les deux contrôles par adresse IP sont muets depuis cinq minutes. Il ouvre
+`Résolution DNS du collecteur Zabbix indisponible` seulement lorsque les deux
+contrôles nommés sont muets depuis cinq minutes alors qu'au moins un contrôle
+direct fonctionne. Une panne ou une maintenance isolée chez Cloudflare ou
+Google ne suffit donc plus à notifier Slack.
 
-Le conteneur `zabbix-server` utilise en plus deux résolveurs explicites,
-configurables par `ZABBIX_DNS_PRIMARY` et `ZABBIX_DNS_SECONDARY`. Cette mesure
-corrige la collecte ; les triggers du collecteur restent le garde-fou qui
-empêche une future panne réseau ou DNS d'être présentée comme plusieurs pannes
-applicatives.
+Le conteneur `zabbix-server` utilise le résolveur fourni par Docker et l'hôte de
+déploiement. Le 27 août 2026, les résolveurs publics imposés dans Compose ont
+été retirés : leur indisponibilité depuis le serveur cassait la collecte, même
+si ces résolveurs restaient joignables depuis d'autres réseaux. Les triggers
+applicatifs dépendent directement des deux problèmes racine afin qu'une panne
+de collecte ne soit pas présentée comme plusieurs pannes applicatives.
 
 ## Endpoints observés le 26 août 2026
 

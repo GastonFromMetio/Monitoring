@@ -8,7 +8,7 @@ Le périmètre initial est volontairement limité à cinq applications : **Eviam
 
 - PostgreSQL, stockage persistant de Zabbix ;
 - Zabbix Server, qui collecte les agents et les endpoints ;
-- deux résolveurs DNS explicites pour fiabiliser ses contrôles HTTP et ses webhooks ;
+- le résolveur DNS fourni par Docker et l'hôte de déploiement ;
 - Zabbix Web, seule interface exposée via Traefik/Dokploy ;
 - un bootstrap one-shot qui sécurise le compte administrateur et précrée les cinq applications désactivées ;
 - le modèle `Metio API /ops — JSON générique`, utilisable dans le Host Wizard.
@@ -29,7 +29,6 @@ Il n'y a ni Prometheus, ni Grafana, ni Alertmanager dans cette version.
    - `MONITORING_DOMAIN` ;
    - `POSTGRES_PASSWORD` ;
    - `ZABBIX_ADMIN_PASSWORD` ;
-   - `ZABBIX_DNS_PRIMARY` et `ZABBIX_DNS_SECONDARY` pour remplacer, si nécessaire, les valeurs sûres proposées dans `.env.example` ;
    - `ZABBIX_SERVER_PORT` si le port par défaut `10051` ne convient pas.
 3. Vérifier que `DOKPLOY_NETWORK` désigne le réseau externe de Traefik (par défaut `dokploy-network`).
 4. Déployer, puis attendre la fin du service `bootstrap`.

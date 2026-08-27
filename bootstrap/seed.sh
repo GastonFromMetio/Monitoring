@@ -6,12 +6,13 @@ set -eu
 
 api_url=${ZABBIX_API_URL:-http://zabbix-web:8080/api_jsonrpc.php}
 # Cette version laisse s'exécuter une seule migration de configuration. La
-# présence de seeded-v4 permet de préserver les objets supprimés volontairement
-# dans l'interface, en particulier l'ancien dashboard global.
-state_file=/state/seeded-v5
-previous_state_file=/state/seeded-v4
-upgrade_from_v4=0
-[ -f "$previous_state_file" ] && upgrade_from_v4=1
+# présence d'un marqueur antérieur permet de préserver les objets supprimés
+# volontairement dans l'interface, en particulier l'ancien dashboard global.
+state_file=/state/seeded-v6
+upgrade_existing=0
+for previous_state_file in /state/seeded-v4 /state/seeded-v5; do
+  [ -f "$previous_state_file" ] && upgrade_existing=1
+done
 projects_file=/bootstrap/projects.json
 request_id=0
 
@@ -361,32 +362,36 @@ ensure_collector_http_item() {
   item_name=$2
   item_key=$3
   item_url=$4
-  item_description=$5
+  status_codes=$5
+  item_description=$6
   item_id=$(get_item_id "$host_id" "$item_key")
+  item_params=$(jq -cn --arg name "$item_name" --arg key "$item_key" --arg url "$item_url" --arg status_codes "$status_codes" --arg description "$item_description" '{
+    name: $name,
+    key_: $key,
+    type: 19,
+    value_type: 4,
+    delay: "30s",
+    url: $url,
+    request_method: 0,
+    timeout: "5s",
+    status_codes: $status_codes,
+    follow_redirects: 1,
+    retrieve_mode: 0,
+    status: 0,
+    tags: [
+      {tag: "metio.domain", value: "monitoring"},
+      {tag: "metio.signal", value: "collector"}
+    ],
+    description: $description
+  }')
 
   if [ -z "$item_id" ]; then
-    params=$(jq -cn --arg host_id "$host_id" --arg name "$item_name" --arg key "$item_key" --arg url "$item_url" --arg description "$item_description" '{
-      hostid: $host_id,
-      name: $name,
-      key_: $key,
-      type: 19,
-      value_type: 4,
-      delay: "30s",
-      url: $url,
-      request_method: 0,
-      timeout: "5s",
-      status_codes: "200",
-      follow_redirects: 1,
-      retrieve_mode: 0,
-      status: 0,
-      tags: [
-        {tag: "metio.domain", value: "monitoring"},
-        {tag: "metio.signal", value: "collector"}
-      ],
-      description: $description
-    }')
+    params=$(printf '%s' "$item_params" | jq -c --arg host_id "$host_id" '. + {hostid: $host_id}')
     result=$(call item.create "$params" "$auth")
     item_id=$(printf '%s' "$result" | jq -r '.itemids[0]')
+  else
+    params=$(printf '%s' "$item_params" | jq -c --arg item_id "$item_id" '. + {itemid: $item_id}')
+    call item.update "$params" "$auth" >/dev/null
   fi
 
   printf '%s' "$item_id"
@@ -1014,10 +1019,12 @@ readiness_template_id=$(ensure_readiness_template)
 readiness_trigger_id=$(get_template_trigger_id "$readiness_template_id" 'Application non prête sur {HOST.NAME}')
 
 collector_host_id=$(ensure_collector_host)
-ensure_collector_http_item "$collector_host_id" 'Collecteur HTTP : sortie directe sans DNS' 'metio.collector.http.ip' 'https://1.1.1.1/cdn-cgi/trace' 'Contrôle la sortie HTTPS du serveur Zabbix sans dépendre de la résolution DNS.' >/dev/null
-ensure_collector_http_item "$collector_host_id" 'Collecteur HTTP : sortie avec DNS' 'metio.collector.http.dns' 'https://one.one.one.one/cdn-cgi/trace' 'Contrôle la résolution DNS et la sortie HTTPS du serveur Zabbix.' >/dev/null
-collector_outbound_trigger_id=$(ensure_collector_trigger "$collector_host_id" 'Sortie HTTP du collecteur Zabbix indisponible' 'nodata(/metio-monitoring-collector/metio.collector.http.ip,2m)=1' 4 'collector_outbound' 'Aucune sortie HTTPS directe depuis 2 minutes.')
-collector_dns_trigger_id=$(ensure_collector_trigger "$collector_host_id" 'Résolution DNS du collecteur Zabbix indisponible' 'nodata(/metio-monitoring-collector/metio.collector.http.dns,2m)=1 and nodata(/metio-monitoring-collector/metio.collector.http.ip,2m)=0' 3 'collector_dns' 'La sortie HTTPS directe fonctionne, mais aucune résolution DNS valide depuis 2 minutes.')
+ensure_collector_http_item "$collector_host_id" 'Collecteur HTTP : sortie directe Cloudflare' 'metio.collector.http.ip' 'https://1.1.1.1/cdn-cgi/trace' '200' 'Contrôle une première sortie HTTPS sans résolution DNS.' >/dev/null
+ensure_collector_http_item "$collector_host_id" 'Collecteur HTTP : sortie directe Google' 'metio.collector.http.ip.google' 'https://8.8.8.8/generate_204' '204' 'Contrôle une seconde sortie HTTPS sans résolution DNS et indépendante de Cloudflare.' >/dev/null
+ensure_collector_http_item "$collector_host_id" 'Collecteur HTTP : résolution Cloudflare' 'metio.collector.http.dns' 'https://one.one.one.one/cdn-cgi/trace' '200' 'Contrôle une première résolution DNS suivie d’une sortie HTTPS.' >/dev/null
+ensure_collector_http_item "$collector_host_id" 'Collecteur HTTP : résolution Google' 'metio.collector.http.dns.google' 'https://dns.google/generate_204' '204' 'Contrôle une seconde résolution DNS indépendante de Cloudflare.' >/dev/null
+collector_outbound_trigger_id=$(ensure_collector_trigger "$collector_host_id" 'Sortie HTTP du collecteur Zabbix indisponible' 'nodata(/metio-monitoring-collector/metio.collector.http.ip,5m)=1 and nodata(/metio-monitoring-collector/metio.collector.http.ip.google,5m)=1' 4 'collector_outbound' 'Aucune des deux sorties HTTPS directes ne fournit de valeur depuis 5 minutes.')
+collector_dns_trigger_id=$(ensure_collector_trigger "$collector_host_id" 'Résolution DNS du collecteur Zabbix indisponible' 'nodata(/metio-monitoring-collector/metio.collector.http.dns,5m)=1 and nodata(/metio-monitoring-collector/metio.collector.http.dns.google,5m)=1 and (nodata(/metio-monitoring-collector/metio.collector.http.ip,5m)=0 or nodata(/metio-monitoring-collector/metio.collector.http.ip.google,5m)=0)' 3 'collector_dns' 'Les deux contrôles nommés sont muets depuis 5 minutes alors qu’au moins une sortie HTTPS directe fonctionne.')
 
 ensure_trigger_dependencies "$liveness_trigger_id" "$collector_outbound_trigger_id" "$collector_dns_trigger_id"
 ensure_trigger_dependencies "$readiness_trigger_id" "$liveness_trigger_id" "$collector_outbound_trigger_id" "$collector_dns_trigger_id"
@@ -1040,7 +1047,7 @@ ensure_trigger_dependencies "$ops_degraded_trigger_id" "$ops_unavailable_trigger
 ensure_trigger_dependencies "$ops_critical_trigger_id" "$ops_unavailable_trigger_id" "$collector_outbound_trigger_id" "$collector_dns_trigger_id"
 
 ensure_template_dashboard "$template_id" "$raw_item_id" "$status_item_id" "$release_item_id" "$generated_at_item_id"
-if [ "$upgrade_from_v4" -eq 0 ]; then
+if [ "$upgrade_existing" -eq 0 ]; then
   ensure_global_dashboard "$applications_group_id"
 fi
 

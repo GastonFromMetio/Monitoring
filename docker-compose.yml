@@ -20,12 +20,9 @@ services:
   zabbix-server:
     image: zabbix/zabbix-server-pgsql:alpine-7.4.14
     restart: unless-stopped
-    # Les agents HTTP et les webhooks Slack dépendent du DNS du conteneur.
-    # Deux résolveurs explicites évitent qu'une panne du résolveur hérité de
-    # l'hôte transforme toutes les sondes applicatives en faux positifs.
-    dns:
-      - ${ZABBIX_DNS_PRIMARY:-1.1.1.1}
-      - ${ZABBIX_DNS_SECONDARY:-9.9.9.9}
+    # Conserver le résolveur fourni par Docker et l'hôte. Forcer des résolveurs
+    # publics ici rend toute la collecte dépendante de leur accessibilité en
+    # UDP/TCP 53 depuis le serveur de déploiement.
     environment:
       DB_SERVER_HOST: postgres
       POSTGRES_DB: zabbix
