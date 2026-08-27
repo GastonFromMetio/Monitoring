@@ -1,4 +1,31 @@
 services:
+  dns-proxy:
+    image: adguard/dnsproxy@sha256:7b0aad81037197eed34be80f26151c20b8755bb459438b9f7cc6eefad9db4e2d
+    restart: unless-stopped
+    command:
+      - --listen=0.0.0.0
+      - --port=53
+      - --upstream=https://1.1.1.1/dns-query
+      - --upstream=https://1.0.0.1/dns-query
+      - --upstream-mode=parallel
+      - --cache
+      - --cache-optimistic
+      - --cache-size=4194304
+      - --cache-min-ttl=60
+      - --cache-max-ttl=600
+      - --timeout=5s
+      - --refuse-any
+    healthcheck:
+      test: ["CMD", "nslookup", "one.one.one.one", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      monitoring-dns:
+        ipv4_address: ${MONITORING_DNS_ADDRESS:-10.253.53.53}
+      monitoring-outbound:
+
   postgres:
     image: postgres:17.6-alpine
     restart: unless-stopped
@@ -20,9 +47,10 @@ services:
   zabbix-server:
     image: zabbix/zabbix-server-pgsql:alpine-7.4.14
     restart: unless-stopped
-    # Conserver le résolveur fourni par Docker et l'hôte. Forcer des résolveurs
-    # publics ici rend toute la collecte dépendante de leur accessibilité en
-    # UDP/TCP 53 depuis le serveur de déploiement.
+    # Docker conserve la résolution des services internes et transmet les noms
+    # publics au proxy DNS local, qui utilise HTTPS plutôt que l'UDP externe.
+    dns:
+      - ${MONITORING_DNS_ADDRESS:-10.253.53.53}
     environment:
       DB_SERVER_HOST: postgres
       POSTGRES_DB: zabbix
@@ -33,12 +61,15 @@ services:
       # développées par le serveur, indépendamment du fuseau PHP du frontend.
       TZ: Europe/Paris
     depends_on:
+      dns-proxy:
+        condition: service_healthy
       postgres:
         condition: service_healthy
     ports:
       - "${ZABBIX_SERVER_PORT:-10051}:10051"
     networks:
       - monitoring-internal
+      - monitoring-dns
       # Le serveur Zabbix doit sortir vers les URLs supervisées, tout en restant
       # isolé des autres services internes de la plateforme.
       - monitoring-outbound
@@ -95,6 +126,11 @@ volumes:
 networks:
   monitoring-internal:
     internal: true
+  monitoring-dns:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${MONITORING_DNS_SUBNET:-10.253.53.0/24}
   monitoring-outbound:
   dokploy-network:
     external: true

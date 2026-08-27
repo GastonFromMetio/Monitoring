@@ -75,25 +75,25 @@ composants.
 
 ## Santé du collecteur Zabbix
 
-L'hôte `Metio Monitoring — Collecteur HTTP` exécute toutes les 30 secondes
-quatre contrôles répartis entre deux fournisseurs indépendants :
+Le conteneur `zabbix-server` transmet ses requêtes DNS publiques à un proxy
+local dédié. Ce proxy contacte deux adresses Cloudflare en DNS-over-HTTPS sur
+le port 443, met les réponses en cache et peut servir temporairement une
+réponse expirée pendant qu'il tente de la rafraîchir. Il ne dépend donc plus de
+la disponibilité de DNS publics en UDP/TCP 53 depuis l'hôte de déploiement.
 
-- Cloudflare par adresse IP et par nom DNS ;
-- Google par adresse IP et par nom DNS.
+Le signal racine n'utilise plus des cibles externes différentes des
+applications. L'item calculé `metio.collector.apps.missing` compte toutes les
+30 secondes les contrôles de présence réels sans valeur depuis deux minutes.
+Si au moins trois applications sur cinq sont concernées, Zabbix ouvre un seul
+problème `Collecte HTTP multi-applications interrompue`. Les triggers de
+présence applicatifs, réglés à trois minutes, en dépendent et ne notifient donc
+pas séparément Slack.
 
-Zabbix ouvre `Sortie HTTP du collecteur Zabbix indisponible` seulement lorsque
-les deux contrôles par adresse IP sont muets depuis cinq minutes. Il ouvre
-`Résolution DNS du collecteur Zabbix indisponible` seulement lorsque les deux
-contrôles nommés sont muets depuis cinq minutes alors qu'au moins un contrôle
-direct fonctionne. Une panne ou une maintenance isolée chez Cloudflare ou
-Google ne suffit donc plus à notifier Slack.
-
-Le conteneur `zabbix-server` utilise le résolveur fourni par Docker et l'hôte de
-déploiement. Le 27 août 2026, les résolveurs publics imposés dans Compose ont
-été retirés : leur indisponibilité depuis le serveur cassait la collecte, même
-si ces résolveurs restaient joignables depuis d'autres réseaux. Les triggers
-applicatifs dépendent directement des deux problèmes racine afin qu'une panne
-de collecte ne soit pas présentée comme plusieurs pannes applicatives.
+Les anciens items Cloudflare/Google et les triggers `Sortie HTTP du collecteur
+Zabbix indisponible` / `Résolution DNS du collecteur Zabbix indisponible` sont
+désactivés. Ils pouvaient rester verts grâce à leur cache pendant que les noms
+applicatifs échouaient, ou devenir non supportés parce qu'un seul fournisseur
+était filtré : ils ne représentaient pas fidèlement le trafic à protéger.
 
 ## Endpoints observés le 26 août 2026
 
