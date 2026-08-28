@@ -8,11 +8,11 @@ Le périmètre initial est volontairement limité à cinq applications : **Eviam
 
 - PostgreSQL, stockage persistant de Zabbix ;
 - Zabbix Server, qui collecte les agents et les endpoints ;
-- un proxy DNS local qui interroge ses upstreams en DNS-over-HTTPS ;
+- le DNS standard de Docker et du serveur, sans IP applicative codée en dur ;
 - Zabbix Web, seule interface exposée via Traefik/Dokploy ;
 - un bootstrap one-shot qui sécurise le compte administrateur et précrée les cinq applications désactivées ;
 - le modèle `Metio API /ops — JSON générique`, utilisable dans le Host Wizard.
-- l'hôte `Metio Monitoring — Collecteur HTTP`, qui distingue une panne de sortie réseau d'une panne DNS et bloque les faux positifs applicatifs dépendants ;
+- l'hôte `Metio Monitoring — Collecteur HTTP`, qui agrège les collectes applicatives manquantes et bloque les faux positifs dépendants ;
 - le dashboard global `Métio — Tour de contrôle` : état des applications, gravité et incidents ouverts ;
 - le dashboard d'hôte `Santé de l’application` : état, version, snapshot, incidents et données collectées.
 - le dashboard `Eviamemo — Exploitation` : dépendances, workers, queues, activité IA et snapshots
@@ -29,7 +29,6 @@ Il n'y a ni Prometheus, ni Grafana, ni Alertmanager dans cette version.
    - `MONITORING_DOMAIN` ;
    - `POSTGRES_PASSWORD` ;
    - `ZABBIX_ADMIN_PASSWORD` ;
-   - `MONITORING_DNS_SUBNET` et `MONITORING_DNS_ADDRESS` uniquement si le réseau privé proposé dans `.env.example` entre en conflit avec un réseau existant ;
    - `ZABBIX_SERVER_PORT` si le port par défaut `10051` ne convient pas.
 3. Vérifier que `DOKPLOY_NETWORK` désigne le réseau externe de Traefik (par défaut `dokploy-network`).
 4. Déployer, puis attendre la fin du service `bootstrap`.

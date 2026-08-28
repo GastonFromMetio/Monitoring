@@ -8,9 +8,9 @@ api_url=${ZABBIX_API_URL:-http://zabbix-web:8080/api_jsonrpc.php}
 # Cette version laisse s'exécuter une seule migration de configuration. La
 # présence d'un marqueur antérieur permet de préserver les objets supprimés
 # volontairement dans l'interface, en particulier l'ancien dashboard global.
-state_file=/state/seeded-v7
+state_file=/state/seeded-v8
 upgrade_existing=0
-for previous_state_file in /state/seeded-v4 /state/seeded-v5 /state/seeded-v6; do
+for previous_state_file in /state/seeded-v4 /state/seeded-v5 /state/seeded-v6 /state/seeded-v7; do
   [ -f "$previous_state_file" ] && upgrade_existing=1
 done
 projects_file=/bootstrap/projects.json
@@ -129,7 +129,10 @@ ensure_template() {
       status_codes: "200-299",
       follow_redirects: 1,
       retrieve_mode: 0,
-      headers: [{name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"}],
+      headers: [
+        {name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"},
+        {name: "Connection", value: "close"}
+      ],
       status: 1,
       tags: [
         {tag: "metio.domain", value: "source"},
@@ -139,6 +142,15 @@ ensure_template() {
     }')
     result=$(call item.create "$params" "$auth")
     item_id=$(printf '%s' "$result" | jq -r '.itemids[0]')
+  else
+    params=$(jq -cn --arg item_id "$item_id" '{
+      itemid: $item_id,
+      headers: [
+        {name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"},
+        {name: "Connection", value: "close"}
+      ]
+    }')
+    call item.update "$params" "$auth" >/dev/null
   fi
 
   trigger_params='{"output":["triggerid"],"filter":{"description":["Endpoint /ops indisponible sur {HOST.NAME}"]}}'
@@ -234,6 +246,7 @@ ensure_liveness_template() {
       status_codes: "200",
       follow_redirects: 1,
       retrieve_mode: 0,
+      headers: [{name: "Connection", value: "close"}],
       status: 0,
       tags: [
         {tag: "metio.domain", value: "health"},
@@ -242,6 +255,9 @@ ensure_liveness_template() {
       description: "Réponse brute de l’endpoint public de présence. Une valeur fraîche confirme que l’application répond en HTTP 200."
     }')
     call item.create "$params" "$auth" >/dev/null
+  else
+    params=$(jq -cn --arg item_id "$item_id" '{itemid: $item_id, headers: [{name: "Connection", value: "close"}]}')
+    call item.update "$params" "$auth" >/dev/null
   fi
 
   trigger_id=$(get_template_trigger_id "$template_id" 'Application inaccessible sur {HOST.NAME}')
@@ -302,7 +318,10 @@ ensure_readiness_template() {
       status_codes: "200",
       follow_redirects: 1,
       retrieve_mode: 0,
-      headers: [{name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"}],
+      headers: [
+        {name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"},
+        {name: "Connection", value: "close"}
+      ],
       status: 0,
       tags: [
         {tag: "metio.domain", value: "health"},
@@ -311,6 +330,15 @@ ensure_readiness_template() {
       description: "Réponse brute de l’endpoint readiness. Une valeur fraîche confirme que les dépendances indispensables sont prêtes."
     }')
     call item.create "$params" "$auth" >/dev/null
+  else
+    params=$(jq -cn --arg item_id "$item_id" '{
+      itemid: $item_id,
+      headers: [
+        {name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"},
+        {name: "Connection", value: "close"}
+      ]
+    }')
+    call item.update "$params" "$auth" >/dev/null
   fi
 
   trigger_id=$(get_template_trigger_id "$template_id" 'Application non prête sur {HOST.NAME}')
@@ -1129,7 +1157,16 @@ ensure_host_template_link "$eviamemo_host_id" "$ops_template_id"
 # eviamemo.ops.raw. Le rattachement du modèle commun doit préserver cette
 # collecte active ; le profil commun est créé seulement sur les hôtes neufs.
 eviamemo_legacy_raw_item_id=$(get_item_id "$eviamemo_host_id" 'eviamemo.ops.raw')
-if [ -z "$eviamemo_legacy_raw_item_id" ]; then
+if [ -n "$eviamemo_legacy_raw_item_id" ]; then
+  params=$(jq -cn --arg item_id "$eviamemo_legacy_raw_item_id" '{
+    itemid: $item_id,
+    headers: [
+      {name: "X-Monitoring-Token", value: "{$EVIAMEMO_OPS_TOKEN}"},
+      {name: "Connection", value: "close"}
+    ]
+  }')
+  call item.update "$params" "$auth" >/dev/null
+else
   eviamemo_raw_item_id=$(get_item_id "$eviamemo_host_id" 'metio.ops.raw')
   if [ -n "$eviamemo_raw_item_id" ]; then
     ensure_eviamemo_profile "$eviamemo_host_id" "$eviamemo_raw_item_id"

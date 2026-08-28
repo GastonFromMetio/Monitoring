@@ -21,15 +21,6 @@ services:
   zabbix-server:
     image: zabbix/zabbix-server-pgsql:alpine-7.4.14
     restart: unless-stopped
-    # Les cinq cibles applicatives conservent leur nom HTTPS/SNI mais ne
-    # dépendent plus d'un résolveur DNS pendant la collecte. Modifier l'IP
-    # correspondante lors d'une migration d'application vers un autre serveur.
-    extra_hosts:
-      - "eviamemo.713.fr:${EVIAMEMO_MONITORING_IP:-51.210.10.254}"
-      - "eviaway.713.fr:${EVIAWAY_MONITORING_IP:-135.125.79.4}"
-      - "npec.mgacf.fr:${NPEC_MONITORING_IP:-151.80.232.143}"
-      - "stimergie.metio-dev.fr:${STIMERGIE_MONITORING_IP:-91.134.136.18}"
-      - "transcare.713.fr:${TRANSCARE_MONITORING_IP:-152.228.128.150}"
     environment:
       DB_SERVER_HOST: postgres
       POSTGRES_DB: zabbix
