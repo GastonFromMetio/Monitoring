@@ -93,6 +93,8 @@ les pollers classiques, pas par le poller HTTP agent asynchrone qui accumulait
 les sockets. Les clés, historiques, items dépendants et triggers restent
 inchangés. La migration de bootstrap convertit les items existants en conservant
 les URL, tokens, intervalles et codes HTTP attendus.
+`StartHTTPAgentPollers=0` désactive ensuite le poller asynchrone inutilisé dans
+le conteneur `zabbix-server`.
 
 Le signal racine n'utilise plus des cibles externes différentes des
 applications. L'item calculé `metio.collector.apps.missing` compte toutes les

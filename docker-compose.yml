@@ -27,6 +27,10 @@ services:
       POSTGRES_USER: zabbix
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env or Dokploy}
       ZBX_TIMEOUT: "10"
+      # Les sondes HTTPS Metio utilisent des items Script exécutés par les
+      # pollers classiques. Le poller HTTP agent asynchrone de Zabbix 7.4 est
+      # désactivé pour supprimer sa fuite de sockets CLOSE_WAIT.
+      ZBX_STARTHTTPAGENTPOLLERS: "0"
       # Les macros temporelles des notifications ({EVENT.TIME}, etc.) sont
       # développées par le serveur, indépendamment du fuseau PHP du frontend.
       TZ: Europe/Paris
