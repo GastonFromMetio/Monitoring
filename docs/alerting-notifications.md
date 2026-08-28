@@ -86,12 +86,13 @@ Zabbix avait accumulé des connexions fermées par les serveurs distants
 pouvait alors plus créer le socket UDP nécessaire à la résolution DNS et c-ares
 retournait le message trompeur `Could not contact DNS servers`.
 
-Les trois items HTTP maîtres génériques (`metio.health.raw`, `metio.ready.raw`
-et `metio.ops.raw`) ainsi que l'ancienne sonde `eviamemo.ops.raw` envoient
-`Connection: close`. Cela désactive la réutilisation des connexions persistantes
-pour ces sondes et empêche le poller HTTP de remplir sa table de descripteurs.
-Le redémarrage de `zabbix-server` vide les sockets déjà accumulés ; la migration
-de bootstrap applique le header aux items existants sans supprimer leur token.
+Les trois items maîtres génériques (`metio.health.raw`, `metio.ready.raw` et
+`metio.ops.raw`) ainsi que l'ancienne sonde `eviamemo.ops.raw` utilisent le type
+Zabbix **Script** et son objet `HttpRequest`. Les items Script sont exécutés par
+les pollers classiques, pas par le poller HTTP agent asynchrone qui accumulait
+les sockets. Les clés, historiques, items dépendants et triggers restent
+inchangés. La migration de bootstrap convertit les items existants en conservant
+les URL, tokens, intervalles et codes HTTP attendus.
 
 Le signal racine n'utilise plus des cibles externes différentes des
 applications. L'item calculé `metio.collector.apps.missing` compte toutes les
@@ -136,11 +137,11 @@ de laisser des items dépendants non supportés.
 ### Template `Metio HTTP — Présence`
 
 - macro d'hôte : `{$HEALTH.URL}` ;
-- item HTTP agent : `metio.health.raw` ;
+- item Script : `metio.health.raw` ;
 - intervalle : 1 minute ;
 - timeout : 10 secondes ;
 - code attendu : 200 ;
-- header : `Connection: close` ;
+- requête HTTPS exécutée par `HttpRequest` ;
 - trigger : `nodata(...,3m)=1` ;
 - sévérité : Haute ;
 - tags : `metio.domain=health`, `metio.signal=liveness`.
@@ -150,8 +151,8 @@ Le template est lié aux cinq applications.
 ### Template `Metio HTTP — Readiness`
 
 - macro d'hôte : `{$READY.URL}` ;
-- headers : `X-Monitoring-Token: {$OPS.TOKEN}` et `Connection: close` ;
-- item HTTP agent : `metio.ready.raw` ;
+- paramètres HTTPS : `{$READY.URL}` et `X-Monitoring-Token: {$OPS.TOKEN}` ;
+- item Script : `metio.ready.raw` ;
 - intervalle : 1 minute ;
 - timeout : 10 secondes ;
 - code attendu : 200 ;

@@ -8,13 +8,41 @@ api_url=${ZABBIX_API_URL:-http://zabbix-web:8080/api_jsonrpc.php}
 # Cette version laisse s'exécuter une seule migration de configuration. La
 # présence d'un marqueur antérieur permet de préserver les objets supprimés
 # volontairement dans l'interface, en particulier l'ancien dashboard global.
-state_file=/state/seeded-v8
+state_file=/state/seeded-v9
 upgrade_existing=0
-for previous_state_file in /state/seeded-v4 /state/seeded-v5 /state/seeded-v6 /state/seeded-v7; do
+for previous_state_file in /state/seeded-v4 /state/seeded-v5 /state/seeded-v6 /state/seeded-v7 /state/seeded-v8; do
   [ -f "$previous_state_file" ] && upgrade_existing=1
 done
 projects_file=/bootstrap/projects.json
 request_id=0
+
+# Les items HTTP agent asynchrones de Zabbix 7.4 conservent des sockets
+# CLOSE_WAIT jusqu'à épuiser les descripteurs du poller. Les items Script sont
+# exécutés par les pollers classiques et fournissent le même corps de réponse
+# sans passer par ce gestionnaire de connexions persistantes.
+http_get_script='var params = JSON.parse(value);
+
+if (typeof params.url !== "string" || params.url.indexOf("https://") !== 0) {
+    throw "URL HTTPS manquante ou invalide.";
+}
+
+var request = new HttpRequest();
+request.addHeader("Connection: close");
+
+if (typeof params.token === "string" && params.token !== "") {
+    request.addHeader("X-Monitoring-Token: " + params.token);
+}
+
+var response = request.get(params.url);
+var status = request.getStatus();
+var status_min = Number(params.status_min);
+var status_max = Number(params.status_max);
+
+if (status < status_min || status > status_max) {
+    throw "Réponse HTTP inattendue : " + status + ".";
+}
+
+return response;'
 
 if [ -f "$state_file" ]; then
   echo "Bootstrap Zabbix déjà exécuté."
@@ -116,23 +144,21 @@ ensure_template() {
   item_id=$(printf '%s' "$result" | jq -r '.[0].itemid // empty')
 
   if [ -z "$item_id" ]; then
-    params=$(jq -cn --arg template_id "$template_id" '{
+    params=$(jq -cn --arg template_id "$template_id" --arg script "$http_get_script" '{
       hostid: $template_id,
       name: "/ops: réponse JSON",
       key_: "metio.ops.raw",
-      type: 19,
+      type: 21,
       value_type: 4,
       delay: "1m",
-      url: "{$OPS.URL}",
-      request_method: 0,
-      timeout: "10s",
-      status_codes: "200-299",
-      follow_redirects: 1,
-      retrieve_mode: 0,
-      headers: [
-        {name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"},
-        {name: "Connection", value: "close"}
+      params: $script,
+      parameters: [
+        {name: "url", value: "{$OPS.URL}"},
+        {name: "token", value: "{$OPS.TOKEN}"},
+        {name: "status_min", value: "200"},
+        {name: "status_max", value: "299"}
       ],
+      timeout: "10s",
       status: 1,
       tags: [
         {tag: "metio.domain", value: "source"},
@@ -143,12 +169,17 @@ ensure_template() {
     result=$(call item.create "$params" "$auth")
     item_id=$(printf '%s' "$result" | jq -r '.itemids[0]')
   else
-    params=$(jq -cn --arg item_id "$item_id" '{
+    params=$(jq -cn --arg item_id "$item_id" --arg script "$http_get_script" '{
       itemid: $item_id,
-      headers: [
-        {name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"},
-        {name: "Connection", value: "close"}
-      ]
+      type: 21,
+      params: $script,
+      parameters: [
+        {name: "url", value: "{$OPS.URL}"},
+        {name: "token", value: "{$OPS.TOKEN}"},
+        {name: "status_min", value: "200"},
+        {name: "status_max", value: "299"}
+      ],
+      timeout: "10s"
     }')
     call item.update "$params" "$auth" >/dev/null
   fi
@@ -233,20 +264,20 @@ ensure_liveness_template() {
 
   item_id=$(get_item_id "$template_id" 'metio.health.raw')
   if [ -z "$item_id" ]; then
-    params=$(jq -cn --arg template_id "$template_id" '{
+    params=$(jq -cn --arg template_id "$template_id" --arg script "$http_get_script" '{
       hostid: $template_id,
       name: "Présence HTTP : réponse",
       key_: "metio.health.raw",
-      type: 19,
+      type: 21,
       value_type: 4,
       delay: "1m",
-      url: "{$HEALTH.URL}",
-      request_method: 0,
+      params: $script,
+      parameters: [
+        {name: "url", value: "{$HEALTH.URL}"},
+        {name: "status_min", value: "200"},
+        {name: "status_max", value: "200"}
+      ],
       timeout: "10s",
-      status_codes: "200",
-      follow_redirects: 1,
-      retrieve_mode: 0,
-      headers: [{name: "Connection", value: "close"}],
       status: 0,
       tags: [
         {tag: "metio.domain", value: "health"},
@@ -256,7 +287,17 @@ ensure_liveness_template() {
     }')
     call item.create "$params" "$auth" >/dev/null
   else
-    params=$(jq -cn --arg item_id "$item_id" '{itemid: $item_id, headers: [{name: "Connection", value: "close"}]}')
+    params=$(jq -cn --arg item_id "$item_id" --arg script "$http_get_script" '{
+      itemid: $item_id,
+      type: 21,
+      params: $script,
+      parameters: [
+        {name: "url", value: "{$HEALTH.URL}"},
+        {name: "status_min", value: "200"},
+        {name: "status_max", value: "200"}
+      ],
+      timeout: "10s"
+    }')
     call item.update "$params" "$auth" >/dev/null
   fi
 
@@ -305,23 +346,21 @@ ensure_readiness_template() {
 
   item_id=$(get_item_id "$template_id" 'metio.ready.raw')
   if [ -z "$item_id" ]; then
-    params=$(jq -cn --arg template_id "$template_id" '{
+    params=$(jq -cn --arg template_id "$template_id" --arg script "$http_get_script" '{
       hostid: $template_id,
       name: "Readiness HTTP : réponse",
       key_: "metio.ready.raw",
-      type: 19,
+      type: 21,
       value_type: 4,
       delay: "1m",
-      url: "{$READY.URL}",
-      request_method: 0,
-      timeout: "10s",
-      status_codes: "200",
-      follow_redirects: 1,
-      retrieve_mode: 0,
-      headers: [
-        {name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"},
-        {name: "Connection", value: "close"}
+      params: $script,
+      parameters: [
+        {name: "url", value: "{$READY.URL}"},
+        {name: "token", value: "{$OPS.TOKEN}"},
+        {name: "status_min", value: "200"},
+        {name: "status_max", value: "200"}
       ],
+      timeout: "10s",
       status: 0,
       tags: [
         {tag: "metio.domain", value: "health"},
@@ -331,12 +370,17 @@ ensure_readiness_template() {
     }')
     call item.create "$params" "$auth" >/dev/null
   else
-    params=$(jq -cn --arg item_id "$item_id" '{
+    params=$(jq -cn --arg item_id "$item_id" --arg script "$http_get_script" '{
       itemid: $item_id,
-      headers: [
-        {name: "X-Monitoring-Token", value: "{$OPS.TOKEN}"},
-        {name: "Connection", value: "close"}
-      ]
+      type: 21,
+      params: $script,
+      parameters: [
+        {name: "url", value: "{$READY.URL}"},
+        {name: "token", value: "{$OPS.TOKEN}"},
+        {name: "status_min", value: "200"},
+        {name: "status_max", value: "200"}
+      ],
+      timeout: "10s"
     }')
     call item.update "$params" "$auth" >/dev/null
   fi
@@ -1158,12 +1202,17 @@ ensure_host_template_link "$eviamemo_host_id" "$ops_template_id"
 # collecte active ; le profil commun est créé seulement sur les hôtes neufs.
 eviamemo_legacy_raw_item_id=$(get_item_id "$eviamemo_host_id" 'eviamemo.ops.raw')
 if [ -n "$eviamemo_legacy_raw_item_id" ]; then
-  params=$(jq -cn --arg item_id "$eviamemo_legacy_raw_item_id" '{
+  params=$(jq -cn --arg item_id "$eviamemo_legacy_raw_item_id" --arg script "$http_get_script" '{
     itemid: $item_id,
-    headers: [
-      {name: "X-Monitoring-Token", value: "{$EVIAMEMO_OPS_TOKEN}"},
-      {name: "Connection", value: "close"}
-    ]
+    type: 21,
+    params: $script,
+    parameters: [
+      {name: "url", value: "https://eviamemo.713.fr/ops"},
+      {name: "token", value: "{$EVIAMEMO_OPS_TOKEN}"},
+      {name: "status_min", value: "200"},
+      {name: "status_max", value: "299"}
+    ],
+    timeout: "10s"
   }')
   call item.update "$params" "$auth" >/dev/null
 else
